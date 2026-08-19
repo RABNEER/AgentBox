@@ -40,9 +40,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let is_interactive = std::env::args().len() <= 1;
     let cli = Cli::parse();
 
-    match cli.command.unwrap_or_else(|| {
+    let result = match cli.command.unwrap_or_else(|| {
         Commands::Server(ServerArgs {
             port: 3000,
             host: "0.0.0.0".to_string(),
@@ -66,7 +67,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Commands::List(args) => run_list(args).await,
         Commands::Otp(args) => run_otp(args).await,
         Commands::Agent(args) => run_agent(args).await,
+    };
+
+    if let Err(ref e) = result {
+        eprintln!("\n❌ AgentBox Error: {}\n", e);
+        if is_interactive {
+            eprintln!("Press Enter to exit...");
+            let mut buf = String::new();
+            let _ = std::io::stdin().read_line(&mut buf);
+        }
     }
+
+    result
 }
 
 async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -109,7 +121,7 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
 
         tokio::spawn(async move {
             if let Err(e) = smtp_server.start().await {
-                tracing::error!("Embedded SMTP server error: {}", e);
+                tracing::warn!("Embedded SMTP server note: {} (HTTP API remains active)", e);
             }
         });
     }
@@ -147,8 +159,34 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
     };
 
     let router = api::create_router(state);
-    let bind_addr = format!("{}:{}", args.host, args.port);
-    let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+
+    // Resilient Port Allocation: Try requested port, then fallback up to 10 ports
+    let mut chosen_port = args.port;
+    let mut listener_opt = None;
+
+    for port_candidate in args.port..(args.port + 20) {
+        let bind_addr = format!("{}:{}", args.host, port_candidate);
+        match tokio::net::TcpListener::bind(&bind_addr).await {
+            Ok(l) => {
+                chosen_port = port_candidate;
+                listener_opt = Some(l);
+                break;
+            }
+            Err(e) => {
+                tracing::warn!("Port {} unavailable ({}). Checking next available port...", port_candidate, e);
+            }
+        }
+    }
+
+    let listener = match listener_opt {
+        Some(l) => l,
+        None => {
+            let bind_addr = format!("{}:{}", args.host, args.port);
+            tokio::net::TcpListener::bind(&bind_addr).await?
+        }
+    };
+
+    let dashboard_url = format!("http://localhost:{}", chosen_port);
 
     println!("\n╔══════════════════════════════════════════════════════════════════╗");
     println!("║        ⚡ AgentBox Mail — All-In-One Autonomous Engine          ║");
@@ -163,22 +201,42 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
         println!("║  ► Hostinger Sync  : IMAP TLS Active (Live Poller)          ║");
     }
     println!(
-        "║  ► Web Dashboard   : http://localhost:{} (Monochrome UI)     ║",
-        args.port
+        "║  ► Web Dashboard   : {} (Monochrome UI)     ║",
+        dashboard_url
     );
     println!(
         "║  ► Inbound HTTP API: http://localhost:{}/v1/inbound         ║",
-        args.port
+        chosen_port
     );
     println!(
         "║  ► Realtime SSE    : http://localhost:{}/v1/events          ║",
-        args.port
+        chosen_port
     );
     println!(
         "║  ► Agent Domain    : @{}                               ║",
         domain
     );
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
+
+    // Automatically open browser window for user convenience
+    let open_url = dashboard_url.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_millis(350)).await;
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("cmd")
+                .args(["/c", "start", &open_url])
+                .spawn();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("open").arg(&open_url).spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open").arg(&open_url).spawn();
+        }
+    });
 
     axum::serve(listener, router).await?;
     Ok(())
