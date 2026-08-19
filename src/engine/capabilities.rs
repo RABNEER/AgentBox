@@ -83,7 +83,10 @@ pub struct ScopeValidator;
 impl ScopeValidator {
     pub fn has_capability(allowed_caps: &[String], required: Capability) -> bool {
         // If wildcard or admin present, grant all
-        if allowed_caps.iter().any(|c| c == "*" || c == "admin" || c == "all") {
+        if allowed_caps
+            .iter()
+            .any(|c| c == "*" || c == "admin" || c == "all")
+        {
             return true;
         }
 
@@ -104,14 +107,23 @@ mod tests {
         let caps = vec!["inbox.read".to_string(), "otp.read".to_string()];
         assert!(ScopeValidator::has_capability(&caps, Capability::OtpRead));
         assert!(ScopeValidator::has_capability(&caps, Capability::InboxRead));
-        assert!(!ScopeValidator::has_capability(&caps, Capability::EmailSend));
-        assert!(!ScopeValidator::has_capability(&caps, Capability::InboxDelete));
+        assert!(!ScopeValidator::has_capability(
+            &caps,
+            Capability::EmailSend
+        ));
+        assert!(!ScopeValidator::has_capability(
+            &caps,
+            Capability::InboxDelete
+        ));
     }
 
     #[test]
     fn test_wildcard_permissions() {
         let caps = vec!["*".to_string()];
         assert!(ScopeValidator::has_capability(&caps, Capability::EmailSend));
-        assert!(ScopeValidator::has_capability(&caps, Capability::IdentityManage));
+        assert!(ScopeValidator::has_capability(
+            &caps,
+            Capability::IdentityManage
+        ));
     }
 }

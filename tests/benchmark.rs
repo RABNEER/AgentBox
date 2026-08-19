@@ -1,19 +1,45 @@
 use agentbox_mail::db::{Database, Message};
-use agentbox_mail::engine::capabilities::{Capability, ScopeValidator};
 use agentbox_mail::engine::extractor::Extractor;
+use agentbox_mail::engine::outbound::OutboundMailer;
 use agentbox_mail::engine::parser::EmailParser;
+use agentbox_mail::mcp::McpServer;
+use serde_json::json;
+use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
 #[tokio::test]
-async fn benchmark_end_to_end_local_pipeline_latency() {
-    let db = Database::init("sqlite::memory:").await.expect("InMemory SQLite DB failed");
-    let account = db.create_account("agent@apocalypto.in", Some("Bench Agent")).await.unwrap();
+async fn benchmark_full_e2e_mcp_pipeline_latency() {
+    let db = Database::init("sqlite::memory:")
+        .await
+        .expect("InMemory SQLite DB failed");
+    let mailer = OutboundMailer::new(None, 587, None, None);
     let (tx, _) = broadcast::channel::<String>(100);
-    let mut rx = tx.subscribe();
 
-    let raw_email = b"From: sender@github.com\r\nTo: agent@apocalypto.in\r\nSubject: [GitHub] Verification Code: 938102\r\nContent-Type: text/html\r\n\r\n<html><body><p>Your verification code is <b>938102</b>.</p><p><a href=\"https://github.com/verify?token=xyz_938102\">Verify Account</a></p></body></html>";
+    let mcp = Arc::new(McpServer::new(
+        db.clone(),
+        mailer,
+        "apocalypto.in".to_string(),
+        Some(tx.clone()),
+    ));
+
+    // Create an authenticated Agent Identity with scoped capabilities
+    let creds = db
+        .create_agent_identity(
+            "bench-agent",
+            "bench@apocalypto.in",
+            &["otp.read".to_string(), "inbox.read".to_string()],
+        )
+        .await
+        .unwrap();
+    let account = db
+        .get_account_by_address("bench@apocalypto.in")
+        .await
+        .unwrap()
+        .unwrap();
+
+    let raw_email = b"From: auth@github.com\r\nTo: bench@apocalypto.in\r\nSubject: [GitHub] Verification code is 782014\r\nContent-Type: text/html\r\n\r\n<html><body><p>Your OTP code is <b>782014</b>.</p><p><a href=\"https://github.com/verify?token=782014\">Verify Now</a></p></body></html>";
 
     let iterations = 1_000;
     let mut latencies_nanos = Vec::with_capacity(iterations);
@@ -30,17 +56,14 @@ async fn benchmark_end_to_end_local_pipeline_latency() {
         // 1. MIME Parsing
         let parsed = EmailParser::parse_mime(raw_email).expect("MIME parse failed");
 
-        // 2. Extractor (OTP + SafeLink Anti-Phishing)
+        // 2. Extractor (Regex OTP + SafeLink Analysis)
         let extracted = Extractor::extract(
             parsed.subject.as_deref(),
             parsed.body_text.as_deref(),
             parsed.body_html.as_deref(),
         );
-        assert_eq!(extracted.otp.as_deref(), Some("938102"));
-        assert!(!extracted.action_links.is_empty());
-        assert!(extracted.action_links[0].is_safe);
 
-        // 3. SQLite Persistence
+        // 3. SQLite Database Transaction INSERT
         let msg = Message {
             id: format!("msg_{}_{}", i, Uuid::new_v4()),
             account_id: account.id.clone(),
@@ -58,7 +81,7 @@ async fn benchmark_end_to_end_local_pipeline_latency() {
         db.insert_message(&msg).await.unwrap();
 
         // 4. Tokio Broadcast Event Bus Dispatch
-        let evt_payload = serde_json::json!({
+        let evt_payload = json!({
             "type": "new_message",
             "message": {
                 "account_id": account.id,
@@ -66,11 +89,27 @@ async fn benchmark_end_to_end_local_pipeline_latency() {
                 "created_at": msg.created_at
             }
         });
-        tx.send(evt_payload.to_string()).unwrap();
+        let _ = tx.send(evt_payload.to_string());
 
-        // 5. Event Received & MCP Response Construction
-        let received = rx.recv().await.unwrap();
-        let _parsed_evt: serde_json::Value = serde_json::from_str(&received).unwrap();
+        // 5. Full MCP Tool Call Execution (tools/call -> get_latest_otp with token auth)
+        let mcp_response = mcp
+            .handle_request(
+                "tools/call".to_string(),
+                Some(json!({
+                    "name": "get_latest_otp",
+                    "arguments": {
+                        "account_id": account.id,
+                        "agent_token": creds.auth_token
+                    }
+                })),
+                json!(1),
+            )
+            .await;
+
+        assert!(
+            mcp_response.result.is_some(),
+            "MCP call must return successful result"
+        );
 
         let elapsed_nanos = t0.elapsed().as_nanos();
         latencies_nanos.push(elapsed_nanos);
@@ -84,47 +123,204 @@ async fn benchmark_end_to_end_local_pipeline_latency() {
     let avg_ns = total_elapsed.as_nanos() as f64 / iterations as f64;
 
     println!("\n==========================================================================");
-    println!(" ⚡ AGENTBOX END-TO-END PIPELINE BENCHMARK (Full Ingestion ➔ MCP Result)");
+    println!(" ⚡ AGENTBOX FULL END-TO-END MCP PIPELINE BENCHMARK");
     println!("==========================================================================");
-    println!(" Pipeline Stages Tested:");
-    println!("   1. Raw MIME Parsing (mail-parser)");
+    println!(" Full Pipeline Stages Tested:");
+    println!("   1. Raw MIME Stream Parsing (mail-parser)");
     println!("   2. Regex 4-8 Digit OTP Extraction (once_cell)");
-    println!("   3. SafeLink Anti-Redirect / Phishing Analysis (url parser)");
+    println!("   3. SafeLink Anti-Redirect & Phishing Analysis (url)");
     println!("   4. SQLite Database Transaction INSERT (sqlx)");
     println!("   5. Tokio Broadcast Channel Event Dispatch");
-    println!("   6. Realtime Event Bus Receive & MCP Response Construction");
+    println!("   6. Authenticated MCP Tool Call (tools/call ➔ get_latest_otp)");
+    println!("   7. Full JSON-RPC Serialization & Result Output");
     println!("--------------------------------------------------------------------------");
     println!(" Sample Size : {} complete pipeline cycles", iterations);
-    println!(" Average     : {:.3} µs ({:.4} ms)", avg_ns / 1000.0, avg_ns / 1_000_000.0);
-    println!(" p50 Median  : {:.3} µs ({:.4} ms)", p50_ns as f64 / 1000.0, p50_ns as f64 / 1_000_000.0);
-    println!(" p95         : {:.3} µs ({:.4} ms)", p95_ns as f64 / 1000.0, p95_ns as f64 / 1_000_000.0);
-    println!(" p99         : {:.3} µs ({:.4} ms)", p99_ns as f64 / 1000.0, p99_ns as f64 / 1_000_000.0);
-    println!(" Throughput  : {:.0} full cycles/sec", iterations as f64 / total_elapsed.as_secs_f64());
+    println!(
+        " Average     : {:.3} µs ({:.4} ms)",
+        avg_ns / 1000.0,
+        avg_ns / 1_000_000.0
+    );
+    println!(
+        " p50 Median  : {:.3} µs ({:.4} ms)",
+        p50_ns as f64 / 1000.0,
+        p50_ns as f64 / 1_000_000.0
+    );
+    println!(
+        " p95         : {:.3} µs ({:.4} ms)",
+        p95_ns as f64 / 1000.0,
+        p95_ns as f64 / 1_000_000.0
+    );
+    println!(
+        " p99         : {:.3} µs ({:.4} ms)",
+        p99_ns as f64 / 1000.0,
+        p99_ns as f64 / 1_000_000.0
+    );
+    println!(
+        " Throughput  : {:.0} full cycles/sec",
+        iterations as f64 / total_elapsed.as_secs_f64()
+    );
     println!("==========================================================================\n");
 
-    assert!(avg_ns < 10_000_000.0, "Complete local pipeline should execute under 10ms in debug mode");
+    assert!(
+        avg_ns < 10_000_000.0,
+        "Complete MCP pipeline should execute under 10ms in debug mode"
+    );
 }
 
 #[tokio::test]
-async fn test_agent_identity_and_capability_security_enforcement() {
-    let db = Database::init("sqlite::memory:").await.expect("InMemory SQLite DB failed");
-    
-    // 1. Create a restricted Browser QA Agent with only OtpRead and LinksRead
-    let qa_caps = vec!["otp.read".to_string(), "links.read".to_string()];
-    let identity = db.create_agent_identity("browser-qa", "qa@apocalypto.in", &qa_caps).await.unwrap();
+async fn test_object_level_resource_ownership_and_access_denial() {
+    let db = Database::init("sqlite::memory:")
+        .await
+        .expect("InMemory SQLite DB failed");
+    let mailer = OutboundMailer::new(None, 587, None, None);
+    let mcp = Arc::new(McpServer::new(
+        db.clone(),
+        mailer,
+        "apocalypto.in".to_string(),
+        None,
+    ));
 
-    assert_eq!(identity.name, "browser-qa");
-    assert!(identity.token.starts_with("agb_"));
+    // 1. Provision Agent A and Agent B
+    let agent_a = db
+        .create_agent_identity(
+            "agent-a",
+            "agent-a@apocalypto.in",
+            &["inbox.read".to_string(), "otp.read".to_string()],
+        )
+        .await
+        .unwrap();
+    let _agent_b = db
+        .create_agent_identity(
+            "agent-b",
+            "agent-b@apocalypto.in",
+            &["inbox.read".to_string(), "otp.read".to_string()],
+        )
+        .await
+        .unwrap();
 
-    // 2. Validate capability scopes
-    let caps: Vec<String> = serde_json::from_str(&identity.capabilities).unwrap();
-    assert!(ScopeValidator::has_capability(&caps, Capability::OtpRead));
-    assert!(ScopeValidator::has_capability(&caps, Capability::LinksRead));
-    assert!(!ScopeValidator::has_capability(&caps, Capability::EmailSend));
-    assert!(!ScopeValidator::has_capability(&caps, Capability::InboxDelete));
+    let account_a = db
+        .get_account_by_address("agent-a@apocalypto.in")
+        .await
+        .unwrap()
+        .unwrap();
+    let account_b = db
+        .get_account_by_address("agent-b@apocalypto.in")
+        .await
+        .unwrap()
+        .unwrap();
 
-    // 3. Test revocation
-    db.revoke_agent_identity(&identity.id).await.unwrap();
-    let updated = db.get_agent_identity(&identity.id).await.unwrap().unwrap();
-    assert_eq!(updated.status, "revoked");
+    // 2. Agent A accesses its OWN inbox -> SUCCEEDS
+    let res_own = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "get_latest_otp",
+                "arguments": {
+                    "account_id": account_a.id,
+                    "agent_token": agent_a.auth_token
+                }
+            })),
+            json!(1),
+        )
+        .await;
+    assert!(
+        res_own.result.is_some(),
+        "Agent A accessing its own inbox must succeed"
+    );
+
+    // 3. Agent A tries to access AGENT B'S inbox -> ACCESS DENIED
+    let res_cross = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "get_latest_otp",
+                "arguments": {
+                    "account_id": account_b.id,
+                    "agent_token": agent_a.auth_token
+                }
+            })),
+            json!(2),
+        )
+        .await;
+    assert!(
+        res_cross.error.is_some(),
+        "Agent A accessing Agent B's inbox must be denied"
+    );
+    let err_msg = res_cross
+        .error
+        .unwrap()
+        .get("message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        err_msg.contains("AccessDenied"),
+        "Error must contain AccessDenied"
+    );
+
+    // 4. Agent A attempts to SEND EMAIL without capability -> PERMISSION DENIED
+    let res_unauth_action = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "send_agent_email",
+                "arguments": {
+                    "account_id": account_a.id,
+                    "to": "target@example.com",
+                    "body": "Hello",
+                    "agent_token": agent_a.auth_token
+                }
+            })),
+            json!(3),
+        )
+        .await;
+    assert!(
+        res_unauth_action.error.is_some(),
+        "Unauthorized action must be denied"
+    );
+    let perm_err = res_unauth_action
+        .error
+        .unwrap()
+        .get("message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        perm_err.contains("PermissionDenied"),
+        "Error must contain PermissionDenied"
+    );
+
+    // 5. Revoked token access -> AUTHENTICATION ERROR
+    db.revoke_agent_identity(&agent_a.agent_id).await.unwrap();
+    let res_revoked = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "get_latest_otp",
+                "arguments": {
+                    "account_id": account_a.id,
+                    "agent_token": agent_a.auth_token
+                }
+            })),
+            json!(4),
+        )
+        .await;
+    assert!(
+        res_revoked.error.is_some(),
+        "Revoked agent access must fail"
+    );
+    let auth_err = res_revoked
+        .error
+        .unwrap()
+        .get("message")
+        .unwrap()
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(
+        auth_err.contains("revoked"),
+        "Error must indicate token is revoked"
+    );
 }

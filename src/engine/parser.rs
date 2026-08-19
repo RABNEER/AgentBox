@@ -76,7 +76,10 @@ impl EmailParser {
         // Extract attachments
         let mut attachments = Vec::new();
         for att in parsed.attachments() {
-            let filename = att.attachment_name().unwrap_or("attachment.bin").to_string();
+            let filename = att
+                .attachment_name()
+                .unwrap_or("attachment.bin")
+                .to_string();
             let content_type = att
                 .content_type()
                 .map(|c| c.c_type.to_string())
@@ -108,7 +111,7 @@ impl EmailParser {
 // Simple base64 encoding without extra heavy crates
 fn base64_encode(data: &[u8]) -> String {
     const STANDARD: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
 
     for chunk in data.chunks(3) {
         let b0 = chunk[0];

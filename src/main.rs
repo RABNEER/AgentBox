@@ -5,7 +5,9 @@ mod engine;
 mod mcp;
 
 use clap::Parser;
-use cli::{AgentArgs, AgentSubcommands, Cli, Commands, CreateArgs, ListArgs, McpArgs, OtpArgs, ServerArgs};
+use cli::{
+    AgentArgs, AgentSubcommands, Cli, Commands, CreateArgs, ListArgs, McpArgs, OtpArgs, ServerArgs,
+};
 use db::Database;
 use engine::{ImapSyncWorker, OutboundMailer, SmtpServer};
 use std::sync::Arc;
@@ -40,22 +42,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let cli = Cli::parse();
 
-    match cli.command.unwrap_or_else(|| Commands::Server(ServerArgs {
-        port: 3000,
-        host: "0.0.0.0".to_string(),
-        smtp_inbound_port: 2525,
-        no_smtp: false,
-        db: "sqlite://agentbox.db?mode=rwc".to_string(),
-        domain: "apocalypto.in".to_string(),
-        smtp_host: None,
-        smtp_port: 587,
-        smtp_user: None,
-        smtp_pass: None,
-        imap_host: None,
-        imap_port: 993,
-        imap_user: None,
-        imap_pass: None,
-    })) {
+    match cli.command.unwrap_or_else(|| {
+        Commands::Server(ServerArgs {
+            port: 3000,
+            host: "0.0.0.0".to_string(),
+            smtp_inbound_port: 2525,
+            no_smtp: false,
+            db: "sqlite://agentbox.db?mode=rwc".to_string(),
+            domain: "apocalypto.in".to_string(),
+            smtp_host: None,
+            smtp_port: 587,
+            smtp_user: None,
+            smtp_pass: None,
+            imap_host: None,
+            imap_port: 993,
+            imap_user: None,
+            imap_pass: None,
+        })
+    }) {
         Commands::Server(args) => run_server(args).await,
         Commands::Mcp(args) => run_mcp(args).await,
         Commands::Create(args) => run_create(args).await,
@@ -70,15 +74,25 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
     let db = Database::init(&args.db).await?;
 
     let smtp_host = args.smtp_host.or_else(|| std::env::var("SMTP_HOST").ok());
-    let smtp_port = std::env::var("SMTP_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(args.smtp_port);
+    let smtp_port = std::env::var("SMTP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(args.smtp_port);
     let smtp_user = args.smtp_user.or_else(|| std::env::var("SMTP_USER").ok());
     let smtp_pass = args.smtp_pass.or_else(|| std::env::var("SMTP_PASS").ok());
 
     let domain = std::env::var("DOMAIN").unwrap_or(args.domain);
 
     // Auto-provision main and agent inboxes
-    let _ = db.create_account(&format!("hello@{}", domain), Some("Primary Domain Mailbox")).await;
-    let _ = db.create_account(&format!("agent@{}", domain), Some("Autonomous Agent Mailbox")).await;
+    let _ = db
+        .create_account(&format!("hello@{}", domain), Some("Primary Domain Mailbox"))
+        .await;
+    let _ = db
+        .create_account(
+            &format!("agent@{}", domain),
+            Some("Autonomous Agent Mailbox"),
+        )
+        .await;
 
     let mailer = OutboundMailer::new(smtp_host, smtp_port, smtp_user, smtp_pass);
 
@@ -102,7 +116,10 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
 
     // 2. Start Hostinger IMAP Live Sync Worker if credentials provided
     let imap_host = args.imap_host.or_else(|| std::env::var("IMAP_HOST").ok());
-    let imap_port = std::env::var("IMAP_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(args.imap_port);
+    let imap_port = std::env::var("IMAP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(args.imap_port);
     let imap_user = args.imap_user.or_else(|| std::env::var("IMAP_USER").ok());
     let imap_pass = args.imap_pass.or_else(|| std::env::var("IMAP_PASS").ok());
 
@@ -137,15 +154,30 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
     println!("║        ⚡ AgentBox Mail — All-In-One Autonomous Engine          ║");
     println!("╠══════════════════════════════════════════════════════════════════╣");
     if !args.no_smtp {
-        println!("║  ► Raw SMTP Inbound: 0.0.0.0:{} (Direct Email Listener)     ║", args.smtp_inbound_port);
+        println!(
+            "║  ► Raw SMTP Inbound: 0.0.0.0:{} (Direct Email Listener)     ║",
+            args.smtp_inbound_port
+        );
     }
     if imap_enabled {
         println!("║  ► Hostinger Sync  : IMAP TLS Active (Live Poller)          ║");
     }
-    println!("║  ► Web Dashboard   : http://localhost:{} (Monochrome UI)     ║", args.port);
-    println!("║  ► Inbound HTTP API: http://localhost:{}/v1/inbound         ║", args.port);
-    println!("║  ► Realtime SSE    : http://localhost:{}/v1/events          ║", args.port);
-    println!("║  ► Agent Domain    : @{}                               ║", domain);
+    println!(
+        "║  ► Web Dashboard   : http://localhost:{} (Monochrome UI)     ║",
+        args.port
+    );
+    println!(
+        "║  ► Inbound HTTP API: http://localhost:{}/v1/inbound         ║",
+        args.port
+    );
+    println!(
+        "║  ► Realtime SSE    : http://localhost:{}/v1/events          ║",
+        args.port
+    );
+    println!(
+        "║  ► Agent Domain    : @{}                               ║",
+        domain
+    );
     println!("╚══════════════════════════════════════════════════════════════════╝\n");
 
     axum::serve(listener, router).await?;
@@ -156,7 +188,7 @@ async fn run_mcp(args: McpArgs) -> Result<(), Box<dyn std::error::Error + Send +
     let db = Database::init(&args.db).await?;
     let mailer = OutboundMailer::new(None, 587, None, None);
     let mcp = Arc::new(mcp::McpServer::new(db, mailer, args.domain, None));
-    
+
     mcp.run_stdio().await?;
     Ok(())
 }
@@ -167,7 +199,12 @@ async fn run_create(args: CreateArgs) -> Result<(), Box<dyn std::error::Error + 
     let address = if let Some(custom) = args.address {
         custom
     } else {
-        format!("{}-{}@{}", args.name.to_lowercase().replace(' ', "-"), rand_slug, "agentbox.io")
+        format!(
+            "{}-{}@{}",
+            args.name.to_lowercase().replace(' ', "-"),
+            rand_slug,
+            "agentbox.io"
+        )
     };
 
     let account = db.create_account(&address, Some(&args.name)).await?;
@@ -187,7 +224,10 @@ async fn run_list(args: ListArgs) -> Result<(), Box<dyn std::error::Error + Send
         return Ok(());
     }
 
-    println!("\n{:<16} {:<34} {:<20}", "ACCOUNT ID", "EMAIL ADDRESS", "NAME");
+    println!(
+        "\n{:<16} {:<34} {:<20}",
+        "ACCOUNT ID", "EMAIL ADDRESS", "NAME"
+    );
     println!("{:-<72}", "");
     for acc in accounts {
         println!(
@@ -203,7 +243,7 @@ async fn run_list(args: ListArgs) -> Result<(), Box<dyn std::error::Error + Send
 
 async fn run_otp(args: OtpArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db = Database::init(&args.db).await?;
-    
+
     let account = if args.account.contains('@') {
         db.get_account_by_address(&args.account).await?
     } else {
@@ -233,49 +273,66 @@ async fn run_otp(args: OtpArgs) -> Result<(), Box<dyn std::error::Error + Send +
 
 async fn run_agent(args: AgentArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     match args.action {
-        AgentSubcommands::Create { name, capabilities, db } => {
+        AgentSubcommands::Create {
+            name,
+            capabilities,
+            db,
+        } => {
             let db_inst = Database::init(&db).await?;
             let domain = std::env::var("DOMAIN").unwrap_or_else(|_| "apocalypto.in".to_string());
             let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
-            let email = format!("{}-{}@{}", name.to_lowercase().replace(' ', "-"), rand_slug, domain);
+            let email = format!(
+                "{}-{}@{}",
+                name.to_lowercase().replace(' ', "-"),
+                rand_slug,
+                domain
+            );
 
             let caps: Vec<String> = if let Some(caps_str) = capabilities {
                 caps_str.split(',').map(|s| s.trim().to_string()).collect()
             } else {
-                vec!["inbox.read".to_string(), "otp.read".to_string(), "links.read".to_string()]
+                vec![
+                    "inbox.read".to_string(),
+                    "otp.read".to_string(),
+                    "links.read".to_string(),
+                ]
             };
 
-            let identity = db_inst.create_agent_identity(&name, &email, &caps).await?;
+            let creds = db_inst.create_agent_identity(&name, &email, &caps).await?;
 
             println!("\n╔══════════════════════════════════════════════════════════════════╗");
             println!("║             🧑‍🚀 AGENT IDENTITY PROVISIONED                      ║");
             println!("╠══════════════════════════════════════════════════════════════════╣");
-            println!("║  Agent ID     : {:<48} ║", identity.id);
-            println!("║  Name         : {:<48} ║", identity.name);
-            println!("║  Email        : {:<48} ║", identity.email_address);
-            println!("║  Auth Token   : {:<48} ║", identity.token);
-            println!("║  Capabilities : {:<48} ║", identity.capabilities);
-            println!("║  Status       : {:<48} ║", identity.status);
+            println!("║  Agent ID     : {:<48} ║", creds.agent_id);
+            println!("║  Name         : {:<48} ║", creds.name);
+            println!("║  Email        : {:<48} ║", creds.email_address);
+            println!("║  Auth Token   : {:<48} ║", creds.auth_token);
+            println!(
+                "║  Capabilities : {:<48} ║",
+                format!("{:?}", creds.capabilities)
+            );
+            println!("║  Status       : {:<48} ║", "active");
             println!("╚══════════════════════════════════════════════════════════════════╝\n");
+            println!("⚠️  NOTE: {}", creds.note);
         }
         AgentSubcommands::List { db } => {
             let db_inst = Database::init(&db).await?;
-            let list = db_inst.list_agent_identities().await?;
+            let list = db_inst.list_agent_identities_public().await?;
 
             if list.is_empty() {
                 println!("No registered Agent Identities found.");
                 return Ok(());
             }
 
-            println!("\n{:<24} {:<16} {:<32} {:<10}", "AGENT ID", "NAME", "EMAIL IDENTITY", "STATUS");
+            println!(
+                "\n{:<24} {:<16} {:<32} {:<10}",
+                "AGENT ID", "NAME", "EMAIL IDENTITY", "STATUS"
+            );
             println!("{:-<84}", "");
             for agent in list {
                 println!(
                     "{:<24} {:<16} {:<32} {:<10}",
-                    agent.id,
-                    agent.name,
-                    agent.email_address,
-                    agent.status
+                    agent.id, agent.name, agent.email_address, agent.status
                 );
             }
             println!();
@@ -283,7 +340,10 @@ async fn run_agent(args: AgentArgs) -> Result<(), Box<dyn std::error::Error + Se
         AgentSubcommands::Revoke { agent_id, db } => {
             let db_inst = Database::init(&db).await?;
             db_inst.revoke_agent_identity(&agent_id).await?;
-            println!("🔒 Revoked Agent Identity '{}'. Token and permissions invalidated.", agent_id);
+            println!(
+                "🔒 Revoked Agent Identity '{}'. Token and permissions invalidated.",
+                agent_id
+            );
         }
     }
     Ok(())

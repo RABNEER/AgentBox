@@ -41,9 +41,12 @@ impl OutboundMailer {
         }
     }
 
-    pub async fn send_email(&self, req: SendEmailRequest) -> Result<String, Box<dyn Error + Send + Sync>> {
+    pub async fn send_email(
+        &self,
+        req: SendEmailRequest,
+    ) -> Result<String, Box<dyn Error + Send + Sync>> {
         let from_addr = req.from.unwrap_or_else(|| "agent@agentbox.io".to_string());
-        
+
         let from_mailbox: Mailbox = from_addr.parse()?;
         let mut builder = LettreMessage::builder()
             .from(from_mailbox)
@@ -73,8 +76,8 @@ impl OutboundMailer {
 
         // If SMTP credentials are provided, send via SMTP server
         if let Some(host) = &self.smtp_host {
-            let mut transport_builder = AsyncSmtpTransport::<Tokio1Executor>::relay(host)?
-                .port(self.smtp_port);
+            let mut transport_builder =
+                AsyncSmtpTransport::<Tokio1Executor>::relay(host)?.port(self.smtp_port);
 
             if let (Some(u), Some(p)) = (&self.smtp_user, &self.smtp_pass) {
                 let creds = Credentials::new(u.clone(), p.clone());
@@ -86,7 +89,11 @@ impl OutboundMailer {
             Ok("Dispatched via SMTP".to_string())
         } else {
             // Local mock dispatch for dev / testing
-            tracing::info!("Outbound email queued/simulated: Subject '{}' to {:?}", req.subject, req.to);
+            tracing::info!(
+                "Outbound email queued/simulated: Subject '{}' to {:?}",
+                req.subject,
+                req.to
+            );
             Ok("Dispatched (Mock/Dev Mode)".to_string())
         }
     }

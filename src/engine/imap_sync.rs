@@ -69,7 +69,7 @@ impl ImapSyncWorker {
         let connector = TlsConnector::from(Arc::new(config));
         let addr = format!("{}:{}", self.host, self.port);
         let tcp_stream = TcpStream::connect(&addr).await?;
-        
+
         let server_name = ServerName::try_from(self.host.as_str())?.to_owned();
         let tls_stream = connector.connect(server_name, tcp_stream).await?;
 
@@ -86,11 +86,14 @@ impl ImapSyncWorker {
         let unseen_uids = session.search("UNSEEN").await?;
 
         if !unseen_uids.is_empty() {
-            info!("Found {} new unseen messages in Hostinger inbox!", unseen_uids.len());
+            info!(
+                "Found {} new unseen messages in Hostinger inbox!",
+                unseen_uids.len()
+            );
 
             for uid in unseen_uids {
                 let mut messages_stream = session.fetch(uid.to_string(), "RFC822").await?;
-                
+
                 use tokio_stream::StreamExt;
                 while let Some(msg_res) = messages_stream.next().await {
                     if let Ok(msg) = msg_res {
@@ -112,10 +115,14 @@ impl ImapSyncWorker {
         raw_bytes: &[u8],
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let now = Utc::now().timestamp();
-        let msg_id = format!("msg_{}", Uuid::new_v4().to_string().replace('-', "")[..12].to_string());
+        let msg_id = format!("msg_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
 
         if let Some(parsed) = EmailParser::parse_mime(raw_bytes) {
-            let to_addr = parsed.to.first().cloned().unwrap_or_else(|| self.username.clone());
+            let to_addr = parsed
+                .to
+                .first()
+                .cloned()
+                .unwrap_or_else(|| self.username.clone());
 
             // Extract OTP & Links
             let extracted = Extractor::extract(
@@ -127,10 +134,11 @@ impl ImapSyncWorker {
             // Auto-provision or match account in database
             let account = match self.db.get_account_by_address(&to_addr).await {
                 Ok(Some(acc)) => acc,
-                _ => self
-                    .db
-                    .create_account(&to_addr, Some("Live Hostinger Inbox"))
-                    .await?,
+                _ => {
+                    self.db
+                        .create_account(&to_addr, Some("Live Hostinger Inbox"))
+                        .await?
+                }
             };
 
             let links_json = serde_json::to_string(&extracted.action_links).ok();
@@ -153,9 +161,7 @@ impl ImapSyncWorker {
             self.db.insert_message(&message).await?;
             info!(
                 "📥 Ingested Live Email for '{}' from {} -> OTP: {:?}",
-                to_addr,
-                parsed.from,
-                extracted.otp
+                to_addr, parsed.from, extracted.otp
             );
 
             // Broadcast to Web Dashboard & AI Agents via SSE

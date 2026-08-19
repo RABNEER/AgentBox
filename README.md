@@ -4,6 +4,7 @@
 
 ### *The Sovereign Autonomous Mailbox & Identity Layer for AI Agents*
 
+[![CI](https://github.com/RABNEER/AgentBox/actions/workflows/ci.yml/badge.svg)](https://github.com/RABNEER/AgentBox/actions)
 [![npm version](https://img.shields.io/npm/v/agentbox-mail.svg?style=for-the-badge&color=000000&labelColor=18181b)](https://www.npmjs.com/package/agentbox-mail)
 [![npm downloads](https://img.shields.io/npm/dt/agentbox-mail.svg?style=for-the-badge&color=000000&labelColor=18181b)](https://www.npmjs.com/package/agentbox-mail)
 [![GitHub Release](https://img.shields.io/github/v/release/RABNEER/AgentBox?style=for-the-badge&color=000000&labelColor=18181b)](https://github.com/RABNEER/AgentBox/releases/latest)
@@ -13,11 +14,11 @@
 
 <br/>
 
-**AgentBox** gives autonomous AI coding agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**) persistent machine-native email identities and sovereign communication infrastructure. Receive emails, capture 2FA verification codes in **<0.14ms**, verify activation magic links with anti-phishing protection, and dispatch outbound replies with **zero third-party cloud lock-in**.
+**AgentBox** gives autonomous AI coding agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**) persistent machine-native email identities, object-level authorization, and sovereign communication infrastructure. Receive emails, capture 2FA verification codes in **<0.14ms**, verify activation magic links with anti-phishing protection, and dispatch outbound replies with **zero third-party cloud lock-in**.
 
 <br/>
 
-[Quick Start](#-quick-start) • [Agent Identity](#-first-class-agent-identity) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Link Safety](#-link-safety--anti-phishing-engine) • [Architecture](#-architecture)
+[Quick Start](#-quick-start) • [Agent Identity & Security](#-first-class-agent-identity--object-level-security) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Link Safety](#-link-safety--anti-phishing-engine) • [Architecture](#-architecture)
 
 ---
 
@@ -34,16 +35,17 @@ When autonomous AI agents build software, register accounts on developer platfor
 | ❌ Paid SaaS email APIs charge per-email and require credit cards | ✅ **100% Free & Self-Hosted** on local SQLite (`agentbox.db`) |
 | ❌ Webhook services require public URLs / tunneling (Ngrok) | ✅ **Built-in IMAP TLS Poller & Raw Inbound SMTP Server** (Hostinger, Titan, Google, Stalwart) |
 | ❌ Polling REST APIs takes 5–30 seconds with rate limit bottlenecks | ✅ **Event-Driven Async Wake-up (<0.001ms)** via Tokio broadcast channels |
-| ❌ Agents lack granular security and can be tricked by open-redirect links | ✅ **Scoped Capability Matrix** & **Deep URL Safety / Anti-Phishing Engine** |
+| ❌ Cross-agent data leaks with unauthenticated tools | ✅ **Mandatory Scoped Capabilities & Object-Level Resource Ownership** |
+| ❌ Agents lack security and fall for phishing / open-redirect links | ✅ **Deep URL Safety Engine** (Punycode, Raw IP & Open-Redirect Defense) |
 | ❌ Manual MCP setup requiring complex JSON edits in IDE configs | ✅ **`npx agentbox-mail init`** 1-click auto-configures Claude Code, Cursor & Antigravity |
 
 <br/>
 
 ---
 
-## 🧑‍🚀 First-Class Agent Identity
+## 🧑‍🚀 First-Class Agent Identity & Object-Level Security
 
-AgentBox moves beyond generic mailboxes by introducing **First-Class Agent Identities** with scoped capability policies and auth tokens:
+AgentBox moves beyond generic mailboxes by introducing **First-Class Agent Identities** with strict object-level resource ownership:
 
 ```bash
 # Provision a scoped identity for an autonomous browser QA agent
@@ -61,19 +63,37 @@ npx agentbox-mail agent create browser-qa --capabilities "inbox.read,otp.read,li
 ║  Capabilities : ["inbox.read", "otp.read", "links.read"]         ║
 ║  Status       : active                                           ║
 ╚══════════════════════════════════════════════════════════════════╝
+⚠️  NOTE: Store this auth_token securely. It is only displayed once upon creation and cannot be retrieved again.
 ```
 
-### 🔐 Scoped Capability Matrix
+### 🔐 Multi-Tier Security Enforcement:
 
-| Capability Scope | Description | Tool Authorized |
-|---|---|---|
-| `inbox.read` | Read messages and sender metadata | `read_agent_inbox` |
-| `inbox.create` | Provision new virtual mailboxes | `create_agent_inbox` |
-| `inbox.delete` | Purge mailboxes and delete stored emails | `delete_agent_inbox` |
-| `otp.read` | Extract 4–8 digit verification codes | `get_latest_otp`, `wait_for_email` |
-| `links.read` | Extract sanitized activation links | `get_verification_link` |
-| `email.send` | Dispatch outbound emails via SMTP relay | `send_agent_email` |
-| `identity.manage` | Create, list, and revoke agent identities | `create_agent_identity`, `revoke_agent_identity` |
+```
+                Incoming Tool / API Request
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 1. Validate Auth Token    │ ➔ Reject if invalid or revoked
+              └─────────────┬─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 2. Check Capability Scope │ ➔ E.g. Require "otp.read"
+              └─────────────┬─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 3. Object-Level Ownership │ ➔ Agent A CANNOT read Agent B's mailbox
+              └─────────────┬─────────────┘
+                            │
+                            ▼
+              ┌───────────────────────────┐
+              │ 4. Execute Protected Tool │
+              └───────────────────────────┘
+```
+
+* **Credential Hygiene**: Tokens are displayed **only once** upon creation. Read endpoints (`get_agent_identity`, `list_agent_identities`) use safe public structs that never leak authentication secrets.
+* **Cross-Agent Isolation**: An agent possessing `otp.read` is strictly restricted to mailboxes it owns (`owner_agent_id`). Attempting cross-mailbox access returns a structured `AccessDenied` error.
 
 <br/>
 
@@ -81,29 +101,29 @@ npx agentbox-mail agent create browser-qa --capabilities "inbox.read,otp.read,li
 
 ## 📊 Reproducible Performance Benchmarks
 
-AgentBox includes a built-in benchmark test suite (`tests/benchmark.rs`) measuring microsecond parsing, database transactions, and event dispatch latencies:
+AgentBox includes a complete benchmark test suite (`tests/benchmark.rs`) measuring the entire pipeline from raw bytes to full JSON-RPC output:
 
 ```bash
 cargo test --release --test benchmark -- --nocapture
 ```
 
-### ⚡ Verified End-to-End Pipeline Latency (1,000 Full Cycles):
+### ⚡ Verified Full End-to-End MCP Pipeline (1,000 Cycles):
 
-Tested Pipeline: `Raw MIME Ingestion ➔ mail-parser ➔ SafeLink Analysis ➔ Regex OTP ➔ SQLite INSERT ➔ Broadcast Dispatch ➔ Event Receive ➔ MCP Result`
+Tested Pipeline: `Raw MIME Ingestion ➔ mail-parser ➔ SafeLink Analysis ➔ Regex OTP ➔ SQLite INSERT ➔ Broadcast Dispatch ➔ Authenticated MCP Tool Call (tools/call) ➔ JSON-RPC Result Output`
 
-| Metric | Measured Latency | Throughput |
+| Pipeline Metric | Measured Latency | Throughput |
 |---|---|---|
-| **Average (Mean)** | **`414.1 µs`** (0.414 ms) | **2,415 full cycles/sec** |
-| **p50 Median** | **`396.2 µs`** (0.396 ms) | — |
-| **p95** | **`560.7 µs`** (0.560 ms) | — |
-| **p99** | **`857.5 µs`** (0.857 ms) | — |
+| **Average (Mean)** | **`681.3 µs`** (0.681 ms) | **1,468 complete MCP cycles/sec** |
+| **p50 Median** | **`590.0 µs`** (0.590 ms) | — |
+| **p95** | **`1.20 ms`** | — |
+| **p99** | **`1.58 ms`** | — |
 
-### ⚡ Isolated Component Latencies (10,000 Iterations):
+### ⚡ Sub-Component Microsecond Latencies (10,000 Iterations):
 * **Event Bus Channel Dispatch**: `0.216 µs` (0.0002 ms) — **4.62 Million events/sec**
 * **Link Safety & Anti-Redirect**: `0.652 µs` (0.0007 ms) — **1.53 Million checks/sec**
 * **OTP Regex Extraction**: `138.2 µs` (0.138 ms) — **7,230 extractions/sec**
 
-> *Note: External email arrival latency depends on upstream mail delivery; once bytes hit AgentBox (SMTP/IMAP/HTTP), end-to-end parsing, DB persistence, and event-driven agent wake-up completes in **<0.42ms**.*
+> *Note: External email arrival latency depends on upstream mail delivery; once bytes hit AgentBox (SMTP/IMAP/HTTP), end-to-end parsing, DB persistence, capability authorization, and JSON-RPC response completes in **<0.7ms**.*
 
 <br/>
 
@@ -138,17 +158,17 @@ AgentBox implements the **Model Context Protocol (MCP)** specification over `std
 
 | Category | Tool | Parameters | Description |
 |---|---|---|---|
-| **Identity** | **`create_agent_identity`** | `name, capabilities?` | Creates a persistent identity with scoped capabilities & auth token. |
-| **Identity** | **`get_agent_identity`** | `agent_id` | Retrieves agent capabilities, status, and metadata. |
-| **Identity** | **`list_agent_identities`** | — | Lists all registered agent identities. |
-| **Identity** | **`revoke_agent_identity`** | `agent_id` | Revokes an agent identity and invalidates its auth token. |
-| **Mailbox** | **`create_agent_inbox`** | `name, address?, agent_token?` | Creates a new virtual or aliased mailbox address in SQLite. |
-| **Mailbox** | **`get_latest_otp`** | `account_id, agent_token?` | Extracts the newest 4–8 digit verification code in under **0.14ms**. |
-| **Mailbox** | **`wait_for_email`** | `account_id, timeout_secs?, agent_token?` | **Event-Driven Hook**: Tokio broadcast channel wakes the agent in **<0.001ms** on email arrival. |
+| **Identity** | **`create_agent_identity`** | `name, capabilities?` | Creates a persistent identity and returns a one-time secret auth token. |
+| **Identity** | **`get_agent_identity`** | `agent_id` | Retrieves public agent capabilities, status, and metadata (token sanitized). |
+| **Identity** | **`list_agent_identities`** | — | Lists all registered public agent identities. |
+| **Identity** | **`revoke_agent_identity`** | `agent_id` | Revokes an agent identity and invalidates its auth token immediately. |
+| **Mailbox** | **`create_agent_inbox`** | `name, address?, agent_token?` | Creates a new virtual mailbox linked to the calling agent identity. |
+| **Mailbox** | **`get_latest_otp`** | `account_id, agent_token?` | Extracts the newest 4–8 digit verification code with ownership validation. |
+| **Mailbox** | **`wait_for_email`** | `account_id, timeout_secs?, agent_token?` | **Event-Driven Hook**: Async Tokio broadcast channel wakes the agent in **<0.001ms**. |
 | **Mailbox** | **`get_verification_link`** | `account_id, agent_token?` | Returns parsed activation links with **Link Safety & Anti-Redirect Analysis**. |
 | **Mailbox** | **`read_agent_inbox`** | `account_id, limit?, agent_token?` | Retrieves recent messages, full body text, HTML, and sender metadata. |
-| **Mailbox** | **`send_agent_email`** | `account_id, to, subject, body, agent_token?` | Dispatches outbound emails and replies through your SMTP relay. |
-| **Mailbox** | **`delete_agent_inbox`** | `account_id, agent_token?` | Deletes a temporary or disposable agent mailbox and purges messages. |
+| **Mailbox** | **`send_agent_email`** | `account_id, to, subject, body, agent_token?` | Dispatches outbound emails via SMTP relay with capability check. |
+| **Mailbox** | **`delete_agent_inbox`** | `account_id, agent_token?` | Deletes a temporary mailbox and purges stored messages. |
 
 <br/>
 
@@ -239,6 +259,7 @@ cargo build --release
                                  │       (`agentbox.db`)       │
                                  │  • Accounts  • Identities   │
                                  │  • Messages  • Capabilities │
+                                 │  • Resource Ownership Graph │
                                  └──────────────┬──────────────┘
                                                 │
                  ┌──────────────────────────────┼──────────────────────────────┐
@@ -247,6 +268,7 @@ cargo build --release
      ┌───────────────────────┐      ┌───────────────────────┐      ┌───────────────────────┐
      │ Realtime SSE Bus      │      │ MCP Server (stdio)    │      │ Native Desktop App /  │
      │ (`GET /v1/events`)    │      │ Scoped Capabilities   │      │ Web Dashboard (:3000) │
+     │                       │      │ Object-Level Auth     │      │                       │
      └───────────────────────┘      └───────────────────────┘      └───────────────────────┘
 ```
 

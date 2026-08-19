@@ -74,14 +74,11 @@ impl SmtpServer {
                 if trimmed == "." {
                     // End of DATA stream
                     in_data_mode = false;
-                    let msg_id = format!("msg_{}", Uuid::new_v4().to_string().replace('-', "")[..12].to_string());
-                    
-                    self.process_raw_email(
-                        &msg_id,
-                        &from_address,
-                        &to_addresses,
-                        &data_buffer,
-                    ).await?;
+                    let msg_id =
+                        format!("msg_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
+
+                    self.process_raw_email(&msg_id, &from_address, &to_addresses, &data_buffer)
+                        .await?;
 
                     writer
                         .write_all(format!("250 2.0.0 Ok: queued as {}\r\n", msg_id).as_bytes())
@@ -122,7 +119,9 @@ impl SmtpServer {
                 writer.write_all(b"250 2.1.5 Ok\r\n").await?;
             } else if upper == "DATA" {
                 if to_addresses.is_empty() {
-                    writer.write_all(b"503 5.5.1 Error: need RCPT command\r\n").await?;
+                    writer
+                        .write_all(b"503 5.5.1 Error: need RCPT command\r\n")
+                        .await?;
                 } else {
                     in_data_mode = true;
                     data_buffer.clear();
@@ -171,7 +170,13 @@ impl SmtpServer {
         let (from_parsed, to_parsed, subject, body_text, body_html) =
             if let Some(parsed) = EmailParser::parse_mime(raw_mime.as_bytes()) {
                 let to = parsed.to.first().cloned().unwrap_or(target_to.clone());
-                (parsed.from, to, parsed.subject, parsed.body_text, parsed.body_html)
+                (
+                    parsed.from,
+                    to,
+                    parsed.subject,
+                    parsed.body_text,
+                    parsed.body_html,
+                )
             } else {
                 (
                     from_address.to_string(),
@@ -192,10 +197,11 @@ impl SmtpServer {
         // Find or auto-provision matching account
         let account = match self.db.get_account_by_address(&to_parsed).await {
             Ok(Some(acc)) => acc,
-            _ => self
-                .db
-                .create_account(&to_parsed, Some("Auto-Provisioned SMTP Inbox"))
-                .await?,
+            _ => {
+                self.db
+                    .create_account(&to_parsed, Some("Auto-Provisioned SMTP Inbox"))
+                    .await?
+            }
         };
 
         let links_json = serde_json::to_string(&extracted.action_links).ok();

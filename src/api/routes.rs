@@ -116,7 +116,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/v1/inbound", post(handle_inbound))
         .route("/v1/accounts", get(list_accounts).post(create_account))
         .route("/v1/accounts/:id", get(get_account).delete(delete_account))
-        .route("/v1/accounts/:id/messages", get(list_messages).post(send_message))
+        .route(
+            "/v1/accounts/:id/messages",
+            get(list_messages).post(send_message),
+        )
         .route(
             "/v1/accounts/:id/messages/:msg_id",
             get(get_message).delete(delete_message),
@@ -127,7 +130,10 @@ pub fn create_router(state: AppState) -> Router {
         // Settings & Provider Setup (Update 2.0)
         .route("/v1/config", get(get_config).post(save_config))
         .route("/v1/config/test", post(test_connection))
-        .route("/v1/docker/stalwart", get(get_stalwart_docker_status).post(start_stalwart_docker))
+        .route(
+            "/v1/docker/stalwart",
+            get(get_stalwart_docker_status).post(start_stalwart_docker),
+        )
         .route("/v1/mcp/install", post(install_mcp_into_ides))
         // Embedded UI Static Assets
         .route("/", get(serve_index))
@@ -143,34 +149,55 @@ async fn handle_inbound(
     Json(payload): Json<InboundEmailDto>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let now = Utc::now().timestamp();
-    let msg_id = format!("msg_{}", Uuid::new_v4().to_string().replace('-', "")[..12].to_string());
+    let msg_id = format!("msg_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
 
-    let (from_addr, to_addr, subject, body_text, body_html, raw_mime) = if let Some(mime_str) = payload.raw_mime {
-        if let Some(parsed) = EmailParser::parse_mime(mime_str.as_bytes()) {
-            let to = parsed.to.first().cloned().unwrap_or_else(|| format!("agent@{}", state.domain));
-            (parsed.from, to, parsed.subject, parsed.body_text, parsed.body_html, Some(mime_str))
+    let (from_addr, to_addr, subject, body_text, body_html, raw_mime) =
+        if let Some(mime_str) = payload.raw_mime {
+            if let Some(parsed) = EmailParser::parse_mime(mime_str.as_bytes()) {
+                let to = parsed
+                    .to
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| format!("agent@{}", state.domain));
+                (
+                    parsed.from,
+                    to,
+                    parsed.subject,
+                    parsed.body_text,
+                    parsed.body_html,
+                    Some(mime_str),
+                )
+            } else {
+                return Err(StatusCode::BAD_REQUEST);
+            }
+        } else if let Some(hostinger_msg) = payload.message {
+            let to = payload
+                .mailbox
+                .or(hostinger_msg.to)
+                .unwrap_or_else(|| format!("agent@{}", state.domain));
+            let from = hostinger_msg
+                .from
+                .unwrap_or_else(|| "external@service.com".to_string());
+            let subject = hostinger_msg.subject;
+            let text = hostinger_msg.text.or(hostinger_msg.body);
+            let html = hostinger_msg.html;
+            (from, to, subject, text, html, None)
         } else {
-            return Err(StatusCode::BAD_REQUEST);
-        }
-    } else if let Some(hostinger_msg) = payload.message {
-        let to = payload.mailbox.or(hostinger_msg.to).unwrap_or_else(|| format!("agent@{}", state.domain));
-        let from = hostinger_msg.from.unwrap_or_else(|| "external@service.com".to_string());
-        let subject = hostinger_msg.subject;
-        let text = hostinger_msg.text.or(hostinger_msg.body);
-        let html = hostinger_msg.html;
-        (from, to, subject, text, html, None)
-    } else {
-        let to = payload.to.unwrap_or_else(|| format!("agent@{}", state.domain));
-        let from = payload.from.unwrap_or_else(|| "external@service.com".to_string());
-        let body = payload.body.unwrap_or_default();
-        let is_html = body.contains('<') && body.contains('>');
-        let (body_text, body_html) = if is_html {
-            (None, Some(body))
-        } else {
-            (Some(body), None)
+            let to = payload
+                .to
+                .unwrap_or_else(|| format!("agent@{}", state.domain));
+            let from = payload
+                .from
+                .unwrap_or_else(|| "external@service.com".to_string());
+            let body = payload.body.unwrap_or_default();
+            let is_html = body.contains('<') && body.contains('>');
+            let (body_text, body_html) = if is_html {
+                (None, Some(body))
+            } else {
+                (Some(body), None)
+            };
+            (from, to, payload.subject, body_text, body_html, None)
         };
-        (from, to, payload.subject, body_text, body_html, None)
-    };
 
     let extracted = Extractor::extract(
         subject.as_deref(),
@@ -180,13 +207,11 @@ async fn handle_inbound(
 
     let account = match state.db.get_account_by_address(&to_addr).await {
         Ok(Some(acc)) => acc,
-        _ => {
-            state
-                .db
-                .create_account(&to_addr, Some("Auto-Provisioned Inbox"))
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        }
+        _ => state
+            .db
+            .create_account(&to_addr, Some("Auto-Provisioned Inbox"))
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     };
 
     let links_json = serde_json::to_string(&extracted.action_links).ok();
@@ -248,7 +273,12 @@ async fn create_account(
         addr
     } else {
         let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
-        format!("{}-{}@{}", name.to_lowercase().replace(' ', "-"), rand_slug, state.domain)
+        format!(
+            "{}-{}@{}",
+            name.to_lowercase().replace(' ', "-"),
+            rand_slug,
+            state.domain
+        )
     };
 
     let acc = state
@@ -290,7 +320,9 @@ async fn delete_account(
     });
     let _ = state.tx.send(event_payload.to_string());
 
-    Ok(Json(serde_json::json!({ "status": "deleted", "account_id": account_id })))
+    Ok(Json(
+        serde_json::json!({ "status": "deleted", "account_id": account_id }),
+    ))
 }
 
 // 3. Message Handlers
@@ -336,7 +368,9 @@ async fn delete_message(
     });
     let _ = state.tx.send(event_payload.to_string());
 
-    Ok(Json(serde_json::json!({ "status": "deleted", "message_id": msg_id })))
+    Ok(Json(
+        serde_json::json!({ "status": "deleted", "message_id": msg_id }),
+    ))
 }
 
 // 4. OTP & Action Links Helpers
@@ -406,9 +440,13 @@ async fn send_message(
         send_req.from = Some(account.address.clone());
     }
 
-    let status = state.mailer.send_email(send_req).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let status = state
+        .mailer
+        .send_email(send_req)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let msg_id = format!("msg_{}", Uuid::new_v4().to_string().replace('-', "")[..12].to_string());
+    let msg_id = format!("msg_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
     let now = Utc::now().timestamp();
     let to_first = req.to.first().cloned().unwrap_or_default();
 
@@ -443,21 +481,30 @@ async fn send_message(
 }
 
 // 6. Settings / Config API (Update 2.0)
-async fn get_config(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<ConfigDto>, StatusCode> {
+async fn get_config(State(state): State<Arc<AppState>>) -> Result<Json<ConfigDto>, StatusCode> {
     let domain = std::env::var("DOMAIN").unwrap_or_else(|_| state.domain.clone());
-    let primary_email = std::env::var("PRIMARY_EMAIL").unwrap_or_else(|_| format!("agent@{}", domain));
+    let primary_email =
+        std::env::var("PRIMARY_EMAIL").unwrap_or_else(|_| format!("agent@{}", domain));
     let agent_name = std::env::var("AGENT_NAME").ok();
     let imap_host = std::env::var("IMAP_HOST").ok();
-    let imap_port = std::env::var("IMAP_PORT").ok().and_then(|p| p.parse().ok()).or(Some(993));
+    let imap_port = std::env::var("IMAP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .or(Some(993));
     let imap_user = std::env::var("IMAP_USER").ok();
-    let has_imap_pass = std::env::var("IMAP_PASS").map(|p| !p.trim().is_empty()).unwrap_or(false);
+    let has_imap_pass = std::env::var("IMAP_PASS")
+        .map(|p| !p.trim().is_empty())
+        .unwrap_or(false);
 
     let smtp_host = std::env::var("SMTP_HOST").ok();
-    let smtp_port = std::env::var("SMTP_PORT").ok().and_then(|p| p.parse().ok()).or(Some(587));
+    let smtp_port = std::env::var("SMTP_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .or(Some(587));
     let smtp_user = std::env::var("SMTP_USER").ok();
-    let has_smtp_pass = std::env::var("SMTP_PASS").map(|p| !p.trim().is_empty()).unwrap_or(false);
+    let has_smtp_pass = std::env::var("SMTP_PASS")
+        .map(|p| !p.trim().is_empty())
+        .unwrap_or(false);
 
     let configured = imap_host.is_some() || smtp_host.is_some();
 
@@ -537,7 +584,10 @@ async fn save_config(
     let _ = std::fs::write(".env", env_lines.join("\n"));
 
     // Auto-provision primary inbox
-    let _ = state.db.create_account(&payload.primary_email, Some("Primary Mailbox")).await;
+    let _ = state
+        .db
+        .create_account(&payload.primary_email, Some("Primary Mailbox"))
+        .await;
 
     // Broadcast config update
     let event = serde_json::json!({
@@ -571,21 +621,22 @@ async fn test_connection(
         let connector = TlsConnector::from(Arc::new(config));
         let addr = format!("{}:{}", payload.host, payload.port);
 
-        let tcp_stream = match tokio::time::timeout(Duration::from_secs(6), TcpStream::connect(&addr)).await {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(e)) => {
-                return Ok(Json(serde_json::json!({
-                    "success": false,
-                    "error": format!("Could not connect to {}: {}", addr, e)
-                })));
-            }
-            Err(_) => {
-                return Ok(Json(serde_json::json!({
-                    "success": false,
-                    "error": format!("Connection to {} timed out after 6s", addr)
-                })));
-            }
-        };
+        let tcp_stream =
+            match tokio::time::timeout(Duration::from_secs(6), TcpStream::connect(&addr)).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(e)) => {
+                    return Ok(Json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Could not connect to {}: {}", addr, e)
+                    })));
+                }
+                Err(_) => {
+                    return Ok(Json(serde_json::json!({
+                        "success": false,
+                        "error": format!("Connection to {} timed out after 6s", addr)
+                    })));
+                }
+            };
 
         let server_name = match ServerName::try_from(payload.host.as_str()) {
             Ok(s) => s.to_owned(),
@@ -618,12 +669,10 @@ async fn test_connection(
                     "message": format!("Successfully connected and authenticated to {}:{} in {}ms!", payload.host, payload.port, latency)
                 })))
             }
-            Err((e, _)) => {
-                Ok(Json(serde_json::json!({
-                    "success": false,
-                    "error": format!("IMAP Authentication failed: {}", e)
-                })))
-            }
+            Err((e, _)) => Ok(Json(serde_json::json!({
+                "success": false,
+                "error": format!("IMAP Authentication failed: {}", e)
+            }))),
         }
     } else {
         // SMTP Quick Socket Test
@@ -637,18 +686,14 @@ async fn test_connection(
                     "message": format!("Successfully reached SMTP port at {} in {}ms!", addr, latency)
                 })))
             }
-            Ok(Err(e)) => {
-                Ok(Json(serde_json::json!({
-                    "success": false,
-                    "error": format!("Could not reach SMTP server at {}: {}", addr, e)
-                })))
-            }
-            Err(_) => {
-                Ok(Json(serde_json::json!({
-                    "success": false,
-                    "error": format!("SMTP connection to {} timed out", addr)
-                })))
-            }
+            Ok(Err(e)) => Ok(Json(serde_json::json!({
+                "success": false,
+                "error": format!("Could not reach SMTP server at {}: {}", addr, e)
+            }))),
+            Err(_) => Ok(Json(serde_json::json!({
+                "success": false,
+                "error": format!("SMTP connection to {} timed out", addr)
+            }))),
         }
     }
 }
@@ -665,7 +710,14 @@ async fn get_stalwart_docker_status() -> Result<Json<serde_json::Value>, StatusC
 
     if docker_available {
         if let Ok(out) = std::process::Command::new("docker")
-            .args(["ps", "-a", "--filter", "name=stalwart", "--format", "{{.Status}}"])
+            .args([
+                "ps",
+                "-a",
+                "--filter",
+                "name=stalwart",
+                "--format",
+                "{{.Status}}",
+            ])
             .output()
         {
             let status = String::from_utf8_lossy(&out.stdout).to_string();
@@ -693,30 +745,42 @@ async fn start_stalwart_docker() -> Result<Json<serde_json::Value>, StatusCode> 
         .output();
 
     match start_res {
-        Ok(out) if out.status.success() => {
-            Ok(Json(serde_json::json!({ "status": "started", "message": "Stalwart Mail Server container started successfully!" })))
-        }
+        Ok(out) if out.status.success() => Ok(Json(
+            serde_json::json!({ "status": "started", "message": "Stalwart Mail Server container started successfully!" }),
+        )),
         _ => {
             // Run fresh container
             let run_res = std::process::Command::new("docker")
                 .args([
-                    "run", "-d", "--name", "stalwart",
-                    "-p", "25:25", "-p", "465:465", "-p", "587:587", "-p", "993:993", "-p", "8080:8080",
-                    "stalwartlabs/mail-server"
+                    "run",
+                    "-d",
+                    "--name",
+                    "stalwart",
+                    "-p",
+                    "25:25",
+                    "-p",
+                    "465:465",
+                    "-p",
+                    "587:587",
+                    "-p",
+                    "993:993",
+                    "-p",
+                    "8080:8080",
+                    "stalwartlabs/mail-server",
                 ])
                 .output();
 
             match run_res {
-                Ok(out) if out.status.success() => {
-                    Ok(Json(serde_json::json!({ "status": "created", "message": "Stalwart Mail Server container launched in Docker!" })))
-                }
+                Ok(out) if out.status.success() => Ok(Json(
+                    serde_json::json!({ "status": "created", "message": "Stalwart Mail Server container launched in Docker!" }),
+                )),
                 Ok(out) => {
                     let err = String::from_utf8_lossy(&out.stderr).to_string();
                     Ok(Json(serde_json::json!({ "status": "error", "error": err })))
                 }
-                Err(e) => {
-                    Ok(Json(serde_json::json!({ "status": "error", "error": e.to_string() })))
-                }
+                Err(e) => Ok(Json(
+                    serde_json::json!({ "status": "error", "error": e.to_string() }),
+                )),
             }
         }
     }
@@ -740,7 +804,9 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
     if let Ok(content) = std::fs::read_to_string(&claude_config_path) {
         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&content) {
             if let Some(obj) = json_val.as_object_mut() {
-                let mcp_servers = obj.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
+                let mcp_servers = obj
+                    .entry("mcpServers")
+                    .or_insert_with(|| serde_json::json!({}));
                 if let Some(servers_obj) = mcp_servers.as_object_mut() {
                     servers_obj.insert(
                         "agentbox".to_string(),
@@ -749,7 +815,10 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
                             "args": ["mcp"]
                         }),
                     );
-                    let _ = std::fs::write(&claude_config_path, serde_json::to_string_pretty(&json_val).unwrap());
+                    let _ = std::fs::write(
+                        &claude_config_path,
+                        serde_json::to_string_pretty(&json_val).unwrap(),
+                    );
                     installed_list.push("Claude Code (~/.claude.json)".to_string());
                 }
             }
@@ -767,7 +836,10 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
             }
         }
     });
-    let _ = std::fs::write(".cursor/mcp.json", serde_json::to_string_pretty(&cursor_config).unwrap());
+    let _ = std::fs::write(
+        ".cursor/mcp.json",
+        serde_json::to_string_pretty(&cursor_config).unwrap(),
+    );
     installed_list.push("Cursor Workspace (.cursor/mcp.json)".to_string());
 
     // 3. Antigravity IDE (C:\Users\LOQ\.gemini\config\mcp_config.json)
@@ -775,7 +847,9 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
     if let Ok(content) = std::fs::read_to_string(&antigravity_path) {
         if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&content) {
             if let Some(obj) = json_val.as_object_mut() {
-                let mcp_servers = obj.entry("mcpServers").or_insert_with(|| serde_json::json!({}));
+                let mcp_servers = obj
+                    .entry("mcpServers")
+                    .or_insert_with(|| serde_json::json!({}));
                 if let Some(servers_obj) = mcp_servers.as_object_mut() {
                     servers_obj.insert(
                         "agentbox".to_string(),
@@ -784,7 +858,10 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
                             "args": ["mcp"]
                         }),
                     );
-                    let _ = std::fs::write(&antigravity_path, serde_json::to_string_pretty(&json_val).unwrap());
+                    let _ = std::fs::write(
+                        &antigravity_path,
+                        serde_json::to_string_pretty(&json_val).unwrap(),
+                    );
                     installed_list.push("Antigravity IDE (mcp_config.json)".to_string());
                 }
             }
@@ -830,7 +907,10 @@ fn serve_static_asset(path: &str) -> Response<Body> {
             let mime = mime_guess::from_path(path).first_or_octet_stream();
             Response::builder()
                 .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, HeaderValue::from_str(mime.as_ref()).unwrap())
+                .header(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_str(mime.as_ref()).unwrap(),
+                )
                 .body(Body::from(content.data))
                 .unwrap()
         }

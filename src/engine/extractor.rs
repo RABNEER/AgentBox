@@ -22,7 +22,17 @@ static LINK_KEYWORD_PATTERNS: Lazy<Regex> = Lazy::new(|| {
 });
 
 // Suspicious open redirect query parameters
-static REDIRECT_PARAMS: &[&str] = &["redirect", "redirect_to", "redirect_url", "url", "next", "dest", "target", "to", "return_to"];
+static REDIRECT_PARAMS: &[&str] = &[
+    "redirect",
+    "redirect_to",
+    "redirect_url",
+    "url",
+    "next",
+    "dest",
+    "target",
+    "to",
+    "return_to",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SafeLink {
@@ -44,7 +54,11 @@ pub struct ExtractedMetadata {
 pub struct Extractor;
 
 impl Extractor {
-    pub fn extract(subject: Option<&str>, text_body: Option<&str>, html_body: Option<&str>) -> ExtractedMetadata {
+    pub fn extract(
+        subject: Option<&str>,
+        text_body: Option<&str>,
+        html_body: Option<&str>,
+    ) -> ExtractedMetadata {
         let mut meta = ExtractedMetadata::default();
 
         let full_text = format!(
@@ -59,7 +73,10 @@ impl Extractor {
             if let Some(captures) = pattern.captures(&full_text) {
                 if let Some(matched) = captures.get(1) {
                     let cleaned = matched.as_str().replace('-', "");
-                    if cleaned.chars().all(|c| c.is_ascii_digit()) && cleaned.len() >= 4 && cleaned.len() <= 8 {
+                    if cleaned.chars().all(|c| c.is_ascii_digit())
+                        && cleaned.len() >= 4
+                        && cleaned.len() <= 8
+                    {
                         meta.otp = Some(cleaned);
                         break;
                     }
@@ -78,13 +95,12 @@ impl Extractor {
                         let link_text = element.text().collect::<Vec<_>>().join(" ");
                         let href_str = href.trim();
 
-                        if href_str.starts_with("http://") || href_str.starts_with("https://") {
-                            // Check if either URL or link text matches verification keywords
-                            if LINK_KEYWORD_PATTERNS.is_match(href_str) || LINK_KEYWORD_PATTERNS.is_match(&link_text) {
-                                if !candidate_urls.contains(&href_str.to_string()) {
-                                    candidate_urls.push(href_str.to_string());
-                                }
-                            }
+                        if (href_str.starts_with("http://") || href_str.starts_with("https://"))
+                            && (LINK_KEYWORD_PATTERNS.is_match(href_str)
+                                || LINK_KEYWORD_PATTERNS.is_match(&link_text))
+                            && !candidate_urls.contains(&href_str.to_string())
+                        {
+                            candidate_urls.push(href_str.to_string());
                         }
                     }
                 }
@@ -127,7 +143,8 @@ impl Extractor {
         let host_str = parsed.host_str().unwrap_or("").to_string();
 
         // Check for raw IP addresses
-        let is_ip = host_str.split('.').count() == 4 && host_str.split('.').all(|p| p.parse::<u8>().is_ok());
+        let is_ip = host_str.split('.').count() == 4
+            && host_str.split('.').all(|p| p.parse::<u8>().is_ok());
         if is_ip {
             return SafeLink {
                 url: raw_url.to_string(),
@@ -156,19 +173,28 @@ impl Extractor {
         let mut has_open_redirect = false;
         let mut redirect_target = None;
         for (k, v) in parsed.query_pairs() {
-            if REDIRECT_PARAMS.contains(&k.to_lowercase().as_str()) {
-                if v.starts_with("http://") || v.starts_with("https://") || v.starts_with("//") {
-                    has_open_redirect = true;
-                    redirect_target = Some(v.to_string());
-                    break;
-                }
+            if REDIRECT_PARAMS.contains(&k.to_lowercase().as_str())
+                && (v.starts_with("http://") || v.starts_with("https://") || v.starts_with("//"))
+            {
+                has_open_redirect = true;
+                redirect_target = Some(v.to_string());
+                break;
             }
         }
 
         let is_safe = !has_open_redirect && parsed.scheme() == "https";
-        let confidence = if is_safe { 0.98 } else if has_open_redirect { 0.40 } else { 0.70 };
+        let confidence = if is_safe {
+            0.98
+        } else if has_open_redirect {
+            0.40
+        } else {
+            0.70
+        };
         let reason = if has_open_redirect {
-            Some(format!("Suspicious open redirect parameter targeting: {}", redirect_target.unwrap_or_default()))
+            Some(format!(
+                "Suspicious open redirect parameter targeting: {}",
+                redirect_target.unwrap_or_default()
+            ))
         } else if parsed.scheme() != "https" {
             Some("Insecure HTTP protocol".to_string())
         } else {
@@ -193,7 +219,8 @@ mod tests {
     #[test]
     fn test_github_otp_extraction() {
         let subject = "[GitHub] Please verify your device";
-        let body = "Verification code: 849201. Please use this code to sign in to your GitHub account.";
+        let body =
+            "Verification code: 849201. Please use this code to sign in to your GitHub account.";
         let extracted = Extractor::extract(Some(subject), Some(body), None);
         assert_eq!(extracted.otp, Some("849201".to_string()));
     }
@@ -203,7 +230,10 @@ mod tests {
         let body = "Please click here to verify your email: https://signin.aws.amazon.com/verify?token=abc_123";
         let extracted = Extractor::extract(None, Some(body), None);
         assert!(!extracted.action_links.is_empty());
-        assert_eq!(extracted.action_links[0].url, "https://signin.aws.amazon.com/verify?token=abc_123");
+        assert_eq!(
+            extracted.action_links[0].url,
+            "https://signin.aws.amazon.com/verify?token=abc_123"
+        );
         assert_eq!(extracted.action_links[0].domain, "signin.aws.amazon.com");
         assert!(extracted.action_links[0].is_safe);
         assert_eq!(extracted.action_links[0].confidence, 0.98);
@@ -211,7 +241,8 @@ mod tests {
 
     #[test]
     fn test_open_redirect_safety_detection() {
-        let malicious_link = "https://legit-service.com/login?redirect=https://evil-phishing-site.com/steal-session";
+        let malicious_link =
+            "https://legit-service.com/login?redirect=https://evil-phishing-site.com/steal-session";
         let safe_link = Extractor::analyze_link_safety(malicious_link);
         assert!(!safe_link.is_safe);
         assert!(safe_link.has_open_redirect);

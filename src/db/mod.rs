@@ -9,10 +9,24 @@ pub struct Account {
     pub id: String,
     pub address: String,
     pub display_name: Option<String>,
+    pub owner_agent_id: Option<String>,
     pub status: String,
     pub created_at: i64,
 }
 
+/// Public Agent Identity (Safe for serialization, NEVER exposes auth token)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AgentIdentityPublic {
+    pub id: String,
+    pub name: String,
+    pub email_address: String,
+    pub capabilities: String,
+    pub status: String,
+    pub created_at: i64,
+    pub last_active_at: i64,
+}
+
+/// Internal Agent Identity with token for auth validation
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct AgentIdentity {
     pub id: String,
@@ -23,6 +37,31 @@ pub struct AgentIdentity {
     pub status: String,
     pub created_at: i64,
     pub last_active_at: i64,
+}
+
+impl AgentIdentity {
+    pub fn to_public(&self) -> AgentIdentityPublic {
+        AgentIdentityPublic {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            email_address: self.email_address.clone(),
+            capabilities: self.capabilities.clone(),
+            status: self.status.clone(),
+            created_at: self.created_at,
+            last_active_at: self.last_active_at,
+        }
+    }
+}
+
+/// One-time credential returned only upon creation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentCredentialResponse {
+    pub agent_id: String,
+    pub name: String,
+    pub email_address: String,
+    pub capabilities: Vec<String>,
+    pub auth_token: String,
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
@@ -72,6 +111,7 @@ impl Database {
                 id TEXT PRIMARY KEY,
                 address TEXT UNIQUE NOT NULL,
                 display_name TEXT,
+                owner_agent_id TEXT,
                 status TEXT NOT NULL DEFAULT 'active',
                 created_at INTEGER NOT NULL
             );
@@ -116,12 +156,18 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account_id);
             CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_accounts_address ON accounts(address);
+            CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_agent_id);
             CREATE INDEX IF NOT EXISTS idx_agent_identities_token ON agent_identities(token);
             CREATE INDEX IF NOT EXISTS idx_agent_identities_email ON agent_identities(email_address);
             "#,
         )
         .execute(&pool)
         .await?;
+
+        // Add owner_agent_id column if upgrading from older schema
+        let _ = sqlx::query("ALTER TABLE accounts ADD COLUMN owner_agent_id TEXT")
+            .execute(&pool)
+            .await;
 
         Ok(Self { pool })
     }
@@ -131,18 +177,29 @@ impl Database {
         address: &str,
         display_name: Option<&str>,
     ) -> Result<Account, sqlx::Error> {
-        let id = format!("acc_{}", Uuid::new_v4().to_string().replace('-', "")[..12].to_string());
+        self.create_account_with_owner(address, display_name, None)
+            .await
+    }
+
+    pub async fn create_account_with_owner(
+        &self,
+        address: &str,
+        display_name: Option<&str>,
+        owner_agent_id: Option<&str>,
+    ) -> Result<Account, sqlx::Error> {
+        let id = format!("acc_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
         let now = Utc::now().timestamp();
 
         sqlx::query(
             r#"
-            INSERT INTO accounts (id, address, display_name, status, created_at)
-            VALUES (?, ?, ?, 'active', ?)
+            INSERT INTO accounts (id, address, display_name, owner_agent_id, status, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?)
             "#,
         )
         .bind(&id)
         .bind(address)
         .bind(display_name)
+        .bind(owner_agent_id)
         .bind(now)
         .execute(&self.pool)
         .await?;
@@ -151,6 +208,7 @@ impl Database {
             id,
             address: address.to_string(),
             display_name: display_name.map(|s| s.to_string()),
+            owner_agent_id: owner_agent_id.map(|s| s.to_string()),
             status: "active".to_string(),
             created_at: now,
         })
@@ -158,7 +216,7 @@ impl Database {
 
     pub async fn list_accounts(&self) -> Result<Vec<Account>, sqlx::Error> {
         sqlx::query_as::<_, Account>(
-            "SELECT id, address, display_name, status, created_at FROM accounts ORDER BY created_at DESC",
+            "SELECT id, address, display_name, owner_agent_id, status, created_at FROM accounts ORDER BY created_at DESC",
         )
         .fetch_all(&self.pool)
         .await
@@ -166,16 +224,19 @@ impl Database {
 
     pub async fn get_account_by_id(&self, id: &str) -> Result<Option<Account>, sqlx::Error> {
         sqlx::query_as::<_, Account>(
-            "SELECT id, address, display_name, status, created_at FROM accounts WHERE id = ?",
+            "SELECT id, address, display_name, owner_agent_id, status, created_at FROM accounts WHERE id = ?",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await
     }
 
-    pub async fn get_account_by_address(&self, address: &str) -> Result<Option<Account>, sqlx::Error> {
+    pub async fn get_account_by_address(
+        &self,
+        address: &str,
+    ) -> Result<Option<Account>, sqlx::Error> {
         sqlx::query_as::<_, Account>(
-            "SELECT id, address, display_name, status, created_at FROM accounts WHERE address = ?",
+            "SELECT id, address, display_name, owner_agent_id, status, created_at FROM accounts WHERE address = ?",
         )
         .bind(address)
         .fetch_optional(&self.pool)
@@ -197,7 +258,7 @@ impl Database {
     }
 
     // =========================================================================
-    // Agent Identity Management
+    // Agent Identity & Resource Ownership Management
     // =========================================================================
 
     pub async fn create_agent_identity(
@@ -205,15 +266,21 @@ impl Database {
         name: &str,
         email_address: &str,
         capabilities: &[String],
-    ) -> Result<AgentIdentity, sqlx::Error> {
+    ) -> Result<AgentCredentialResponse, sqlx::Error> {
         let rand_slug = Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
-        let id = format!("agent_{}_{}", name.to_lowercase().replace(' ', "-"), rand_slug);
+        let id = format!(
+            "agent_{}_{}",
+            name.to_lowercase().replace(' ', "-"),
+            rand_slug
+        );
         let token = format!("agb_{}", Uuid::new_v4().to_string().replace('-', ""));
         let now = Utc::now().timestamp();
         let caps_json = serde_json::to_string(capabilities).unwrap_or_else(|_| "[]".to_string());
 
-        // Also ensure a corresponding mailbox exists in accounts
-        let _ = self.create_account(email_address, Some(&format!("Agent Identity: {}", name))).await;
+        // Ensure a dedicated mailbox exists with owner_agent_id set
+        let _ = self
+            .create_account_with_owner(email_address, Some(&format!("Agent: {}", name)), Some(&id))
+            .await;
 
         sqlx::query(
             r#"
@@ -231,15 +298,13 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
-        Ok(AgentIdentity {
-            id,
+        Ok(AgentCredentialResponse {
+            agent_id: id,
             name: name.to_string(),
             email_address: email_address.to_string(),
-            capabilities: caps_json,
-            token,
-            status: "active".to_string(),
-            created_at: now,
-            last_active_at: now,
+            capabilities: capabilities.to_vec(),
+            auth_token: token,
+            note: "Store this auth_token securely. It is only displayed once upon creation and cannot be retrieved again.".to_string(),
         })
     }
 
@@ -253,7 +318,18 @@ impl Database {
         .await
     }
 
-    pub async fn get_agent_identity_by_token(&self, token: &str) -> Result<Option<AgentIdentity>, sqlx::Error> {
+    pub async fn get_agent_identity_public(
+        &self,
+        id: &str,
+    ) -> Result<Option<AgentIdentityPublic>, sqlx::Error> {
+        let internal = self.get_agent_identity(id).await?;
+        Ok(internal.map(|i| i.to_public()))
+    }
+
+    pub async fn get_agent_identity_by_token(
+        &self,
+        token: &str,
+    ) -> Result<Option<AgentIdentity>, sqlx::Error> {
         sqlx::query_as::<_, AgentIdentity>(
             "SELECT id, name, email_address, capabilities, token, status, created_at, last_active_at FROM agent_identities WHERE token = ?",
         )
@@ -262,12 +338,16 @@ impl Database {
         .await
     }
 
-    pub async fn list_agent_identities(&self) -> Result<Vec<AgentIdentity>, sqlx::Error> {
-        sqlx::query_as::<_, AgentIdentity>(
+    pub async fn list_agent_identities_public(
+        &self,
+    ) -> Result<Vec<AgentIdentityPublic>, sqlx::Error> {
+        let identities = sqlx::query_as::<_, AgentIdentity>(
             "SELECT id, name, email_address, capabilities, token, status, created_at, last_active_at FROM agent_identities ORDER BY created_at DESC",
         )
         .fetch_all(&self.pool)
-        .await
+        .await?;
+
+        Ok(identities.into_iter().map(|i| i.to_public()).collect())
     }
 
     pub async fn revoke_agent_identity(&self, id: &str) -> Result<(), sqlx::Error> {
@@ -277,6 +357,38 @@ impl Database {
             .execute(&self.pool)
             .await?;
         Ok(())
+    }
+
+    /// Verifies if an Agent owns a specific account/mailbox or if it's the agent's primary mailbox
+    pub async fn verify_resource_ownership(
+        &self,
+        agent: &AgentIdentity,
+        account_id: &str,
+    ) -> Result<bool, sqlx::Error> {
+        let account = match self.get_account_by_id(account_id).await? {
+            Some(acc) => acc,
+            None => return Ok(false),
+        };
+
+        // 1. Direct owner_agent_id match
+        if account.owner_agent_id.as_deref() == Some(&agent.id) {
+            return Ok(true);
+        }
+
+        // 2. Email address match
+        if account.address.to_lowercase() == agent.email_address.to_lowercase() {
+            return Ok(true);
+        }
+
+        // 3. If account has no owner (legacy/root mailbox), grant access only if agent has wildcard/admin capability
+        if account.owner_agent_id.is_none() {
+            let caps: Vec<String> = serde_json::from_str(&agent.capabilities).unwrap_or_default();
+            if caps.iter().any(|c| c == "*" || c == "admin" || c == "all") {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
     }
 
     // =========================================================================
