@@ -1,6 +1,8 @@
 use crate::db::{AgentIdentity, Database};
 use crate::engine::capabilities::{Capability, ScopeValidator};
-use crate::engine::{outbound::SendEmailRequest, OutboundMailer};
+use crate::engine::outbound::SendEmailRequest;
+use crate::engine::tasks::{AgentTask, TaskAuditLog, TaskPriority};
+use crate::engine::OutboundMailer;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -104,7 +106,191 @@ impl McpServer {
             },
             "tools/list" => {
                 let tools = vec![
-                    // Identity & Profile Primitives
+                    // =========================================================
+                    // 1. Agent Task Protocol & Orchestration Tools
+                    // =========================================================
+                    json!({
+                        "name": "dispatch_agent_task",
+                        "description": "Dispatches a structured work order/task from one agent (e.g. Jules) to another agent or capability pool with evidence and acceptance criteria.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "action": {
+                                    "type": "string",
+                                    "description": "Task action type (e.g. 'fix_bug', 'code_review', 'e2e_test', 'deploy')"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Detailed description of the issue or feature requirement."
+                                },
+                                "repository": {
+                                    "type": "string",
+                                    "description": "Target repository (e.g. 'RABNEER/EstateFlow')"
+                                },
+                                "branch": {
+                                    "type": "string",
+                                    "description": "Target git branch (default: 'main')"
+                                },
+                                "priority": {
+                                    "type": "string",
+                                    "enum": ["low", "normal", "high", "urgent"],
+                                    "description": "Task priority level (default: 'normal')"
+                                },
+                                "target_agent": {
+                                    "type": "string",
+                                    "description": "Optional specific target agent ID or name."
+                                },
+                                "evidence": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Stack traces, failing test file paths, or reproduction steps."
+                                },
+                                "acceptance_criteria": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Explicit verification criteria to satisfy before completion."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Source agent authorization token (requires 'task.dispatch')."
+                                }
+                            },
+                            "required": ["action", "description"]
+                        }
+                    }),
+                    json!({
+                        "name": "claim_agent_task",
+                        "description": "Atomically locks and claims an unassigned or targeted task for a worker agent.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "string",
+                                    "description": "The unique task ID to claim (e.g. 'task_8d21a9')."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Claiming worker agent auth token (requires 'task.claim')."
+                                }
+                            },
+                            "required": ["task_id"]
+                        }
+                    }),
+                    json!({
+                        "name": "update_task_progress",
+                        "description": "Updates task lifecycle status ('running', 'testing', 'pr_opened') and logs intermediate git commits or test results to the audit trail.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "string",
+                                    "description": "The unique task ID."
+                                },
+                                "status": {
+                                    "type": "string",
+                                    "enum": ["running", "testing", "pr_opened", "failed"],
+                                    "description": "New lifecycle status."
+                                },
+                                "commit_sha": {
+                                    "type": "string",
+                                    "description": "Optional Git commit hash created during the task."
+                                },
+                                "pr_url": {
+                                    "type": "string",
+                                    "description": "Optional GitHub Pull Request URL."
+                                },
+                                "test_results": {
+                                    "type": "string",
+                                    "description": "Optional test execution metrics (e.g. '143 passed, 0 failed')."
+                                },
+                                "note": {
+                                    "type": "string",
+                                    "description": "Progress note or audit log message."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Worker agent auth token (requires 'task.update')."
+                                }
+                            },
+                            "required": ["task_id", "status"]
+                        }
+                    }),
+                    json!({
+                        "name": "complete_agent_task",
+                        "description": "Marks a task completed with final commit SHA, PR URL, and summary, emitting a completion event and audit trail entry.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "string",
+                                    "description": "The unique task ID."
+                                },
+                                "summary": {
+                                    "type": "string",
+                                    "description": "Summary of changes made, root cause analysis, and resolution."
+                                },
+                                "commit_sha": {
+                                    "type": "string",
+                                    "description": "Final Git commit SHA."
+                                },
+                                "pr_url": {
+                                    "type": "string",
+                                    "description": "GitHub Pull Request URL."
+                                },
+                                "test_results": {
+                                    "type": "string",
+                                    "description": "Test verification results."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Worker agent auth token (requires 'task.update')."
+                                }
+                            },
+                            "required": ["task_id", "summary"]
+                        }
+                    }),
+                    json!({
+                        "name": "list_agent_tasks",
+                        "description": "Lists agent work orders filtered by status or assigned agent.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {
+                                    "type": "string",
+                                    "description": "Optional filter by status ('received', 'claimed', 'running', 'pr_opened', 'completed', 'failed')"
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional agent auth token."
+                                },
+                                "limit": {
+                                    "type": "number",
+                                    "description": "Max tasks to return (default: 20)."
+                                }
+                            }
+                        }
+                    }),
+                    json!({
+                        "name": "get_task_audit_trail",
+                        "description": "Retrieves the complete immutable audit trail of actions, commits, and status transitions for a task.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {
+                                    "type": "string",
+                                    "description": "The unique task ID."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional agent auth token."
+                                }
+                            },
+                            "required": ["task_id"]
+                        }
+                    }),
+                    // =========================================================
+                    // 2. Identity & Profile Primitives
+                    // =========================================================
                     json!({
                         "name": "create_agent_identity",
                         "description": "Creates a first-class persistent Agent Identity with scoped capabilities, email address, and returns a one-time secret auth token.",
@@ -118,7 +304,7 @@ impl McpServer {
                                 "capabilities": {
                                     "type": "array",
                                     "items": { "type": "string" },
-                                    "description": "Allowed capability scopes: 'inbox.read', 'inbox.create', 'inbox.delete', 'otp.read', 'links.read', 'email.send'"
+                                    "description": "Allowed capability scopes: 'inbox.read', 'inbox.create', 'inbox.delete', 'otp.read', 'links.read', 'email.send', 'task.dispatch', 'task.claim', 'task.update'"
                                 }
                             },
                             "required": ["name"]
@@ -160,7 +346,9 @@ impl McpServer {
                             "required": ["agent_id"]
                         }
                     }),
-                    // Mailbox & OTP Automation Primitives
+                    // =========================================================
+                    // 3. Mailbox & OTP Automation Primitives
+                    // =========================================================
                     json!({
                         "name": "create_agent_inbox",
                         "description": "Creates a new dedicated mailbox or virtual address for an AI agent worker.",
@@ -362,7 +550,6 @@ impl McpServer {
         }
     }
 
-    /// Enforce capability check and resource ownership validation
     async fn check_authorization_and_ownership(
         &self,
         token_opt: Option<&str>,
@@ -391,7 +578,6 @@ impl McpServer {
                 .into());
             }
 
-            // Object-level resource ownership verification
             if let Some(account_id) = account_id_opt {
                 let owns = self
                     .db
@@ -409,11 +595,9 @@ impl McpServer {
             return Ok(Some(identity));
         }
 
-        // When running in trusted local CLI without token, permit execution with local sovereign rights
         Ok(None)
     }
 
-    /// Explicitly resolves an existing account without silent side-effect creation on reads.
     async fn resolve_existing_account_id(
         &self,
         identifier: &str,
@@ -433,7 +617,6 @@ impl McpServer {
             return Ok(acc.id);
         }
 
-        // Check if identifier matches default agent prefix
         if let Some(acc) = self
             .db
             .get_account_by_address(&format!("{}@{}", identifier, self.domain))
@@ -454,7 +637,233 @@ impl McpServer {
 
         match name {
             // =================================================================
-            // First-Class Agent Identity Tools (Credential Hygiene)
+            // 1. Agent Task Protocol Operations
+            // =================================================================
+            "dispatch_agent_task" => {
+                let agent_opt = self
+                    .check_authorization_and_ownership(agent_token, None, Capability::TaskDispatch)
+                    .await?;
+                let source_agent_id = agent_opt
+                    .as_ref()
+                    .map(|a| a.id.clone())
+                    .unwrap_or_else(|| "sovereign_root".to_string());
+
+                let action = args
+                    .get("action")
+                    .and_then(|a| a.as_str())
+                    .ok_or("Missing task 'action'")?;
+                let description = args
+                    .get("description")
+                    .and_then(|d| d.as_str())
+                    .ok_or("Missing task 'description'")?;
+                let repository = args.get("repository").and_then(|r| r.as_str());
+                let branch = args.get("branch").and_then(|b| b.as_str());
+                let priority_str = args
+                    .get("priority")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or("normal");
+                let priority = TaskPriority::from_str(priority_str);
+                let target_agent = args.get("target_agent").and_then(|t| t.as_str());
+
+                let evidence: Option<Vec<String>> =
+                    args.get("evidence").and_then(|e| e.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    });
+
+                let acceptance_criteria: Option<Vec<String>> = args
+                    .get("acceptance_criteria")
+                    .and_then(|a| a.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    });
+
+                let task = AgentTask::new(
+                    &source_agent_id,
+                    target_agent,
+                    action,
+                    repository,
+                    branch,
+                    priority,
+                    description,
+                    evidence,
+                    acceptance_criteria,
+                );
+
+                let audit = TaskAuditLog::new(
+                    &task.id,
+                    &source_agent_id,
+                    "task.created",
+                    Some(json!({
+                        "action": action,
+                        "repository": repository,
+                        "target_agent": target_agent
+                    })),
+                );
+
+                let created_task = self.db.create_task(&task, &audit).await?;
+
+                // Emit task event to broadcast bus
+                if let Some(ref bus) = self.event_bus {
+                    let _ = bus.send(
+                        json!({
+                            "type": "new_task",
+                            "task": created_task
+                        })
+                        .to_string(),
+                    );
+                }
+
+                Ok(json!(created_task))
+            }
+            "claim_agent_task" => {
+                let agent_opt = self
+                    .check_authorization_and_ownership(agent_token, None, Capability::TaskClaim)
+                    .await?;
+                let claiming_agent_id = agent_opt
+                    .as_ref()
+                    .map(|a| a.id.as_str())
+                    .unwrap_or("sovereign_worker");
+                let task_id = args
+                    .get("task_id")
+                    .and_then(|t| t.as_str())
+                    .ok_or("Missing task_id")?;
+
+                match self.db.claim_task(task_id, claiming_agent_id).await? {
+                    Some(claimed_task) => {
+                        if let Some(ref bus) = self.event_bus {
+                            let _ = bus.send(json!({
+                                "type": "task_claimed",
+                                "task_id": task_id,
+                                "agent_id": claiming_agent_id
+                            }).to_string());
+                        }
+                        Ok(json!(claimed_task))
+                    }
+                    None => Err(format!("Task '{}' could not be claimed (already claimed, completed, or does not exist)", task_id).into()),
+                }
+            }
+            "update_task_progress" => {
+                let agent_opt = self
+                    .check_authorization_and_ownership(agent_token, None, Capability::TaskUpdate)
+                    .await?;
+                let agent_id = agent_opt
+                    .as_ref()
+                    .map(|a| a.id.as_str())
+                    .unwrap_or("sovereign_worker");
+                let task_id = args
+                    .get("task_id")
+                    .and_then(|t| t.as_str())
+                    .ok_or("Missing task_id")?;
+                let status = args
+                    .get("status")
+                    .and_then(|s| s.as_str())
+                    .ok_or("Missing status")?;
+
+                let commit_sha = args.get("commit_sha").and_then(|c| c.as_str());
+                let pr_url = args.get("pr_url").and_then(|p| p.as_str());
+                let test_results = args.get("test_results").and_then(|t| t.as_str());
+                let note = args.get("note").and_then(|n| n.as_str());
+
+                let details = json!({
+                    "note": note,
+                    "commit_sha": commit_sha,
+                    "pr_url": pr_url,
+                    "test_results": test_results
+                });
+
+                let updated = self
+                    .db
+                    .update_task_progress(
+                        task_id,
+                        agent_id,
+                        status,
+                        commit_sha,
+                        pr_url,
+                        test_results,
+                        Some(&details.to_string()),
+                    )
+                    .await?;
+
+                if let Some(ref bus) = self.event_bus {
+                    let _ = bus.send(
+                        json!({
+                            "type": "task_updated",
+                            "task": updated
+                        })
+                        .to_string(),
+                    );
+                }
+
+                Ok(json!(updated))
+            }
+            "complete_agent_task" => {
+                let agent_opt = self
+                    .check_authorization_and_ownership(agent_token, None, Capability::TaskUpdate)
+                    .await?;
+                let agent_id = agent_opt
+                    .as_ref()
+                    .map(|a| a.id.as_str())
+                    .unwrap_or("sovereign_worker");
+                let task_id = args
+                    .get("task_id")
+                    .and_then(|t| t.as_str())
+                    .ok_or("Missing task_id")?;
+                let summary = args
+                    .get("summary")
+                    .and_then(|s| s.as_str())
+                    .ok_or("Missing summary")?;
+
+                let commit_sha = args.get("commit_sha").and_then(|c| c.as_str());
+                let pr_url = args.get("pr_url").and_then(|p| p.as_str());
+                let test_results = args.get("test_results").and_then(|t| t.as_str());
+
+                let completed = self
+                    .db
+                    .complete_task(task_id, agent_id, commit_sha, pr_url, test_results, summary)
+                    .await?;
+
+                if let Some(ref bus) = self.event_bus {
+                    let _ = bus.send(
+                        json!({
+                            "type": "task_completed",
+                            "task": completed
+                        })
+                        .to_string(),
+                    );
+                }
+
+                Ok(json!(completed))
+            }
+            "list_agent_tasks" => {
+                let agent_opt = self
+                    .check_authorization_and_ownership(agent_token, None, Capability::TaskRead)
+                    .await?;
+                let agent_id = agent_opt.as_ref().map(|a| a.id.as_str());
+                let status = args.get("status").and_then(|s| s.as_str());
+                let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(20) as usize;
+
+                let tasks = self.db.list_tasks(agent_id, status, limit).await?;
+                Ok(json!(tasks))
+            }
+            "get_task_audit_trail" => {
+                let _ = self
+                    .check_authorization_and_ownership(agent_token, None, Capability::TaskRead)
+                    .await?;
+                let task_id = args
+                    .get("task_id")
+                    .and_then(|t| t.as_str())
+                    .ok_or("Missing task_id")?;
+
+                let trail = self.db.get_task_audit_trail(task_id).await?;
+                Ok(json!(trail))
+            }
+
+            // =================================================================
+            // 2. First-Class Agent Identity Tools
             // =================================================================
             "create_agent_identity" => {
                 let name_arg = args
@@ -514,7 +923,7 @@ impl McpServer {
             }
 
             // =================================================================
-            // Mailbox & OTP Operations (Object-Level Authorization)
+            // 3. Mailbox & OTP Operations
             // =================================================================
             "create_agent_inbox" => {
                 let agent_opt = self
@@ -581,7 +990,6 @@ impl McpServer {
                     .min(120);
                 let start_time = Utc::now().timestamp();
 
-                // 1. Immediate check: Did an email already arrive in the last 2 seconds?
                 let initial_messages = self.db.list_messages_for_account(&account_id).await?;
                 if let Some(latest) = initial_messages
                     .into_iter()
@@ -599,7 +1007,6 @@ impl McpServer {
                     }));
                 }
 
-                // 2. Pure Event-Driven Instant Wake-up via Tokio Broadcast Channel (<0.001ms latency)
                 if let Some(ref bus) = self.event_bus {
                     let mut rx = bus.subscribe();
                     let timeout_duration = Duration::from_secs(timeout_secs);
@@ -636,7 +1043,6 @@ impl McpServer {
                         }));
                     }
                 } else {
-                    // Fallback fast polling for standalone CLI runs without live event bus
                     let iterations = timeout_secs * 10;
                     for _ in 0..iterations {
                         tokio::time::sleep(Duration::from_millis(100)).await;

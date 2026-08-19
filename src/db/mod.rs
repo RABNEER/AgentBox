@@ -1,3 +1,4 @@
+use crate::engine::tasks::{AgentTask, TaskAuditLog};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
@@ -98,13 +99,12 @@ pub struct Database {
 
 impl Database {
     pub async fn init(database_url: &str) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        // Ensure sqlite connection
         let pool = SqlitePoolOptions::new()
             .max_connections(10)
             .connect(database_url)
             .await?;
 
-        // Run base table migrations
+        // 1. Run base table migrations
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS accounts (
@@ -152,17 +152,48 @@ impl Database {
                 data_base64 TEXT,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS agent_tasks (
+                id TEXT PRIMARY KEY,
+                source_agent_id TEXT NOT NULL,
+                target_agent_id TEXT,
+                action TEXT NOT NULL,
+                repository TEXT,
+                branch TEXT NOT NULL DEFAULT 'main',
+                priority TEXT NOT NULL DEFAULT 'normal',
+                status TEXT NOT NULL DEFAULT 'received',
+                description TEXT NOT NULL,
+                evidence_json TEXT,
+                acceptance_criteria_json TEXT,
+                assigned_agent_id TEXT,
+                commit_sha TEXT,
+                pr_url TEXT,
+                test_results_json TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                completed_at INTEGER
+            );
+
+            CREATE TABLE IF NOT EXISTS task_audit_logs (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                details_json TEXT,
+                created_at INTEGER NOT NULL,
+                FOREIGN KEY (task_id) REFERENCES agent_tasks(id) ON DELETE CASCADE
+            );
             "#,
         )
         .execute(&pool)
         .await?;
 
-        // Add owner_agent_id column if upgrading from older schema
+        // 2. Add owner_agent_id column if upgrading from older schema
         let _ = sqlx::query("ALTER TABLE accounts ADD COLUMN owner_agent_id TEXT")
             .execute(&pool)
             .await;
 
-        // Create indexes safely after columns exist
+        // 3. Create indexes safely after columns exist
         sqlx::query(
             r#"
             CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account_id);
@@ -171,6 +202,10 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_accounts_owner ON accounts(owner_agent_id);
             CREATE INDEX IF NOT EXISTS idx_agent_identities_token ON agent_identities(token);
             CREATE INDEX IF NOT EXISTS idx_agent_identities_email ON agent_identities(email_address);
+            CREATE INDEX IF NOT EXISTS idx_agent_tasks_status ON agent_tasks(status);
+            CREATE INDEX IF NOT EXISTS idx_agent_tasks_assigned ON agent_tasks(assigned_agent_id);
+            CREATE INDEX IF NOT EXISTS idx_agent_tasks_target ON agent_tasks(target_agent_id);
+            CREATE INDEX IF NOT EXISTS idx_task_audit_logs_task ON task_audit_logs(task_id);
             "#,
         )
         .execute(&pool)
@@ -366,7 +401,6 @@ impl Database {
         Ok(())
     }
 
-    /// Verifies if an Agent owns a specific account/mailbox or if it's the agent's primary mailbox
     pub async fn verify_resource_ownership(
         &self,
         agent: &AgentIdentity,
@@ -377,17 +411,14 @@ impl Database {
             None => return Ok(false),
         };
 
-        // 1. Direct owner_agent_id match
         if account.owner_agent_id.as_deref() == Some(&agent.id) {
             return Ok(true);
         }
 
-        // 2. Email address match
         if account.address.to_lowercase() == agent.email_address.to_lowercase() {
             return Ok(true);
         }
 
-        // 3. If account has no owner (legacy/root mailbox), grant access only if agent has wildcard/admin capability
         if account.owner_agent_id.is_none() {
             let caps: Vec<String> = serde_json::from_str(&agent.capabilities).unwrap_or_default();
             if caps.iter().any(|c| c == "*" || c == "admin" || c == "all") {
@@ -396,6 +427,237 @@ impl Database {
         }
 
         Ok(false)
+    }
+
+    // =========================================================================
+    // Agent Task Protocol & Audit Trail Operations
+    // =========================================================================
+
+    pub async fn create_task(
+        &self,
+        task: &AgentTask,
+        initial_audit: &TaskAuditLog,
+    ) -> Result<AgentTask, sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO agent_tasks (
+                id, source_agent_id, target_agent_id, action, repository, branch,
+                priority, status, description, evidence_json, acceptance_criteria_json,
+                assigned_agent_id, commit_sha, pr_url, test_results_json,
+                created_at, updated_at, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&task.id)
+        .bind(&task.source_agent_id)
+        .bind(&task.target_agent_id)
+        .bind(&task.action)
+        .bind(&task.repository)
+        .bind(&task.branch)
+        .bind(&task.priority)
+        .bind(&task.status)
+        .bind(&task.description)
+        .bind(&task.evidence_json)
+        .bind(&task.acceptance_criteria_json)
+        .bind(&task.assigned_agent_id)
+        .bind(&task.commit_sha)
+        .bind(&task.pr_url)
+        .bind(&task.test_results_json)
+        .bind(task.created_at)
+        .bind(task.updated_at)
+        .bind(task.completed_at)
+        .execute(&self.pool)
+        .await?;
+
+        self.insert_task_audit_log(initial_audit).await?;
+
+        Ok(task.clone())
+    }
+
+    pub async fn get_task(&self, task_id: &str) -> Result<Option<AgentTask>, sqlx::Error> {
+        sqlx::query_as::<_, AgentTask>("SELECT * FROM agent_tasks WHERE id = ?")
+            .bind(task_id)
+            .fetch_optional(&self.pool)
+            .await
+    }
+
+    pub async fn list_tasks(
+        &self,
+        agent_id: Option<&str>,
+        status: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<AgentTask>, sqlx::Error> {
+        let mut query = String::from("SELECT * FROM agent_tasks WHERE 1=1");
+        if agent_id.is_some() {
+            query.push_str(
+                " AND (source_agent_id = ? OR target_agent_id = ? OR assigned_agent_id = ?)",
+            );
+        }
+        if status.is_some() {
+            query.push_str(" AND status = ?");
+        }
+        query.push_str(" ORDER BY created_at DESC LIMIT ?");
+
+        let mut q = sqlx::query_as::<_, AgentTask>(&query);
+        if let Some(aid) = agent_id {
+            q = q.bind(aid).bind(aid).bind(aid);
+        }
+        if let Some(st) = status {
+            q = q.bind(st);
+        }
+        q = q.bind(limit as i64);
+
+        q.fetch_all(&self.pool).await
+    }
+
+    /// Atomically claims an unassigned task
+    pub async fn claim_task(
+        &self,
+        task_id: &str,
+        agent_id: &str,
+    ) -> Result<Option<AgentTask>, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        let res = sqlx::query(
+            r#"
+            UPDATE agent_tasks
+            SET status = 'claimed', assigned_agent_id = ?, updated_at = ?
+            WHERE id = ? AND (status = 'received' OR status = 'claimed')
+            "#,
+        )
+        .bind(agent_id)
+        .bind(now)
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+
+        if res.rows_affected() > 0 {
+            let audit = TaskAuditLog::new(task_id, agent_id, "task.claimed", None);
+            self.insert_task_audit_log(&audit).await?;
+            self.get_task(task_id).await
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn update_task_progress(
+        &self,
+        task_id: &str,
+        agent_id: &str,
+        status: &str,
+        commit_sha: Option<&str>,
+        pr_url: Option<&str>,
+        test_results: Option<&str>,
+        details_json: Option<&str>,
+    ) -> Result<AgentTask, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agent_tasks
+            SET status = ?,
+                commit_sha = COALESCE(?, commit_sha),
+                pr_url = COALESCE(?, pr_url),
+                test_results_json = COALESCE(?, test_results_json),
+                updated_at = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(status)
+        .bind(commit_sha)
+        .bind(pr_url)
+        .bind(test_results)
+        .bind(now)
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+
+        let parsed_details =
+            details_json.and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok());
+        let audit = TaskAuditLog::new(
+            task_id,
+            agent_id,
+            &format!("task.{}", status),
+            parsed_details,
+        );
+        self.insert_task_audit_log(&audit).await?;
+
+        self.get_task(task_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)
+    }
+
+    pub async fn complete_task(
+        &self,
+        task_id: &str,
+        agent_id: &str,
+        commit_sha: Option<&str>,
+        pr_url: Option<&str>,
+        test_results: Option<&str>,
+        summary: &str,
+    ) -> Result<AgentTask, sqlx::Error> {
+        let now = Utc::now().timestamp();
+        sqlx::query(
+            r#"
+            UPDATE agent_tasks
+            SET status = 'completed',
+                commit_sha = COALESCE(?, commit_sha),
+                pr_url = COALESCE(?, pr_url),
+                test_results_json = COALESCE(?, test_results_json),
+                completed_at = ?,
+                updated_at = ?
+            WHERE id = ?
+            "#,
+        )
+        .bind(commit_sha)
+        .bind(pr_url)
+        .bind(test_results)
+        .bind(now)
+        .bind(now)
+        .bind(task_id)
+        .execute(&self.pool)
+        .await?;
+
+        let details = serde_json::json!({
+            "summary": summary,
+            "commit_sha": commit_sha,
+            "pr_url": pr_url,
+        });
+        let audit = TaskAuditLog::new(task_id, agent_id, "task.completed", Some(details));
+        self.insert_task_audit_log(&audit).await?;
+
+        self.get_task(task_id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)
+    }
+
+    pub async fn insert_task_audit_log(&self, log: &TaskAuditLog) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO task_audit_logs (id, task_id, agent_id, event_type, details_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            "#,
+        )
+        .bind(&log.id)
+        .bind(&log.task_id)
+        .bind(&log.agent_id)
+        .bind(&log.event_type)
+        .bind(&log.details_json)
+        .bind(log.created_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    pub async fn get_task_audit_trail(
+        &self,
+        task_id: &str,
+    ) -> Result<Vec<TaskAuditLog>, sqlx::Error> {
+        sqlx::query_as::<_, TaskAuditLog>(
+            "SELECT * FROM task_audit_logs WHERE task_id = ? ORDER BY created_at ASC",
+        )
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await
     }
 
     // =========================================================================

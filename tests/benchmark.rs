@@ -324,3 +324,184 @@ async fn test_object_level_resource_ownership_and_access_denial() {
         "Error must indicate token is revoked"
     );
 }
+
+#[tokio::test]
+async fn test_autonomous_agent_task_orchestration_and_audit_lineage() {
+    let db = Database::init("sqlite::memory:")
+        .await
+        .expect("InMemory SQLite DB failed");
+    let mailer = OutboundMailer::new(None, 587, None, None);
+    let (tx, _) = broadcast::channel::<String>(100);
+
+    let mcp = Arc::new(McpServer::new(
+        db.clone(),
+        mailer,
+        "apocalypto.in".to_string(),
+        Some(tx.clone()),
+    ));
+
+    // 1. Provision Jules (QA Orchestrator) and Coder (Worker Agent)
+    let jules = db
+        .create_agent_identity(
+            "jules",
+            "jules@apocalypto.in",
+            &["task.dispatch".to_string(), "task.read".to_string()],
+        )
+        .await
+        .unwrap();
+
+    let coder = db
+        .create_agent_identity(
+            "coder",
+            "coder@apocalypto.in",
+            &[
+                "task.claim".to_string(),
+                "task.update".to_string(),
+                "task.read".to_string(),
+            ],
+        )
+        .await
+        .unwrap();
+
+    // 2. Jules Dispatches a Work Order (Task) via MCP
+    let dispatch_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "dispatch_agent_task",
+                "arguments": {
+                    "action": "fix_bug",
+                    "repository": "RABNEER/EstateFlow",
+                    "branch": "main",
+                    "priority": "high",
+                    "description": "Property search returns duplicate listings when multiple filters are applied",
+                    "evidence": ["tests/property-search.spec.ts:87"],
+                    "acceptance_criteria": [
+                        "Deduplicate property query results",
+                        "Add regression spec test",
+                        "All unit & e2e tests pass"
+                    ],
+                    "agent_token": jules.auth_token
+                }
+            })),
+            json!(1),
+        )
+        .await;
+
+    assert!(
+        dispatch_res.result.is_some(),
+        "Jules dispatching task must succeed"
+    );
+    let res_text = dispatch_res.result.unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let task_obj: serde_json::Value = serde_json::from_str(&res_text).unwrap();
+    let task_id = task_obj["id"].as_str().unwrap();
+    assert_eq!(task_obj["status"], "received");
+    assert_eq!(task_obj["priority"], "high");
+
+    // 3. Coder Agent Claims the Task via MCP
+    let claim_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "claim_agent_task",
+                "arguments": {
+                    "task_id": task_id,
+                    "agent_token": coder.auth_token
+                }
+            })),
+            json!(2),
+        )
+        .await;
+
+    assert!(
+        claim_res.result.is_some(),
+        "Coder claiming task must succeed"
+    );
+
+    // 4. Coder Agent Updates Progress (Running & Git Commit)
+    let progress_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "update_task_progress",
+                "arguments": {
+                    "task_id": task_id,
+                    "status": "pr_opened",
+                    "commit_sha": "a91f4b23",
+                    "pr_url": "https://github.com/RABNEER/EstateFlow/pull/42",
+                    "test_results": "143 passed, 0 failed",
+                    "note": "Fixed duplicate SQL JOIN and verified regression suite",
+                    "agent_token": coder.auth_token
+                }
+            })),
+            json!(3),
+        )
+        .await;
+
+    assert!(
+        progress_res.result.is_some(),
+        "Coder updating progress must succeed"
+    );
+
+    // 5. Coder Agent Completes the Task
+    let complete_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "complete_agent_task",
+                "arguments": {
+                    "task_id": task_id,
+                    "summary": "Resolved duplicate listings by adding DISTINCT ON (id) clause. PR #42 opened and verified against CI.",
+                    "commit_sha": "a91f4b23",
+                    "pr_url": "https://github.com/RABNEER/EstateFlow/pull/42",
+                    "test_results": "143 passed, 0 failed",
+                    "agent_token": coder.auth_token
+                }
+            })),
+            json!(4),
+        )
+        .await;
+
+    assert!(
+        complete_res.result.is_some(),
+        "Coder completing task must succeed"
+    );
+
+    // 6. Retrieve Immutable Task Audit Trail Lineage
+    let audit_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "get_task_audit_trail",
+                "arguments": {
+                    "task_id": task_id,
+                    "agent_token": jules.auth_token
+                }
+            })),
+            json!(5),
+        )
+        .await;
+
+    assert!(
+        audit_res.result.is_some(),
+        "Fetching audit trail must succeed"
+    );
+    let audit_text = audit_res.result.unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let audit_logs: Vec<serde_json::Value> = serde_json::from_str(&audit_text).unwrap();
+
+    // Verify complete lineage: created -> claimed -> pr_opened -> completed
+    assert!(
+        audit_logs.len() >= 4,
+        "Audit trail must contain at least 4 lifecycle events"
+    );
+    assert_eq!(audit_logs[0]["event_type"], "task.created");
+    assert_eq!(audit_logs[1]["event_type"], "task.claimed");
+    assert_eq!(audit_logs[2]["event_type"], "task.pr_opened");
+    assert_eq!(audit_logs[3]["event_type"], "task.completed");
+}

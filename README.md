@@ -2,7 +2,7 @@
 
 # ⚡ AgentBox
 
-### *The Sovereign Autonomous Mailbox & Identity Layer for AI Agents*
+### *The Sovereign Autonomous Communication & Task Orchestration Layer for AI Agents*
 
 [![CI](https://github.com/RABNEER/AgentBox/actions/workflows/ci.yml/badge.svg)](https://github.com/RABNEER/AgentBox/actions)
 [![npm version](https://img.shields.io/npm/v/agentbox-mail.svg?style=for-the-badge&color=000000&labelColor=18181b)](https://www.npmjs.com/package/agentbox-mail)
@@ -14,11 +14,11 @@
 
 <br/>
 
-**AgentBox** gives autonomous AI coding agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**) persistent machine-native email identities, object-level authorization, and sovereign communication infrastructure. Receive emails, capture 2FA verification codes in **<0.14ms**, verify activation magic links with anti-phishing protection, and dispatch outbound replies with **zero third-party cloud lock-in**.
+**AgentBox** is the sovereign control plane and work protocol for autonomous AI agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**). It provides machine-native email identities, object-level authorization, instant event-driven task dispatch, and immutable audit trails — enabling one AI agent to delegate work to another agent without human intervention or third-party cloud lock-in.
 
 <br/>
 
-[Quick Start](#-quick-start) • [Agent Identity & Security](#-first-class-agent-identity--object-level-security) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Link Safety](#-link-safety--anti-phishing-engine) • [Architecture](#-architecture)
+[Quick Start](#-quick-start) • [Task Protocol](#-agent-task-protocol--work-orchestration) • [Agent Identity & Security](#-first-class-agent-identity--object-level-security) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Architecture](#-architecture)
 
 ---
 
@@ -28,16 +28,62 @@
 
 ## 💡 Why AgentBox?
 
-When autonomous AI agents build software, register accounts on developer platforms, or run automated QA pipelines, they inevitably hit **Email Verification, 2FA, and Identity Gates**.
+Autonomous AI coding agents need two fundamental capabilities to operate independently:
+1. **Machine Identity & Authentication**: The ability to receive 2FA/OTPs and verify magic links on developer platforms without humans.
+2. **Inter-Agent Work Delegation**: The ability for a QA agent (e.g. Jules) to discover a bug, dispatch a structured work order to a Coding Agent, track repository progress, and verify the resulting Pull Request.
 
 | Problem with Traditional Approaches | The AgentBox Sovereign Solution |
 |---|---|
-| ❌ Paid SaaS email APIs charge per-email and require credit cards | ✅ **100% Free & Self-Hosted** on local SQLite (`agentbox.db`) |
-| ❌ Webhook services require public URLs / tunneling (Ngrok) | ✅ **Built-in IMAP TLS Poller & Raw Inbound SMTP Server** (Hostinger, Titan, Google, Stalwart) |
-| ❌ Polling REST APIs takes 5–30 seconds with rate limit bottlenecks | ✅ **Event-Driven Async Wake-up (<0.001ms)** via Tokio broadcast channels |
-| ❌ Cross-agent data leaks with unauthenticated tools | ✅ **Mandatory Scoped Capabilities & Object-Level Resource Ownership** |
-| ❌ Agents lack security and fall for phishing / open-redirect links | ✅ **Deep URL Safety Engine** (Punycode, Raw IP & Open-Redirect Defense) |
-| ❌ Manual MCP setup requiring complex JSON edits in IDE configs | ✅ **`npx agentbox-mail init`** 1-click auto-configures Claude Code, Cursor & Antigravity |
+| ❌ Agents work in isolation with no structured way to delegate tasks | ✅ **Agent Task Protocol**: Structured work orders, atomic claiming & immutable audit lineage |
+| ❌ Polling REST APIs burns tokens and introduces 5–30s latency | ✅ **Sub-Millisecond Tokio Event Bus (<0.001ms)** for instant agent wake-up |
+| ❌ Cross-agent data leaks and unauthorized actions | ✅ **Multi-Tier Security**: Scoped Capability Matrix + Object-Level Mailbox Ownership |
+| ❌ Complex cloud infrastructure requiring Webhooks/Ngrok | ✅ **Self-Hosted Rust Daemon**: Embedded SQLite (`agentbox.db`), Raw SMTP & IMAP TLS |
+| ❌ Manual MCP setup requiring JSON edits in IDE configs | ✅ **`npx agentbox-mail init`**: 1-click auto-configures Claude Code, Cursor & Antigravity |
+
+<br/>
+
+---
+
+## 📋 Agent Task Protocol & Work Orchestration
+
+AgentBox implements a stateful work protocol allowing agents to dispatch, claim, track, and complete software engineering tasks:
+
+```
+             Jules (QA Agent)
+                    │
+                    │ 1. dispatch_agent_task (action, repo, evidence, criteria)
+                    ▼
+           ┌─────────────────┐
+           │    AgentBox     │ ──► Status: "received"
+           └────────┬────────┘
+                    │ 2. Realtime Event Bus Dispatch (<0.001ms)
+                    ▼
+           Coder (Worker Agent)
+                    │ 3. claim_agent_task
+                    │ 4. update_task_progress (status: "running", commit: "a91f4b")
+                    │ 5. Opens GitHub PR & runs CI tests
+                    │ 6. complete_agent_task (pr_url, test_results, summary)
+                    ▼
+           ┌─────────────────┐
+           │    AgentBox     │ ──► Status: "completed" + Immutable Audit Lineage
+           └────────┬────────┘
+                    │ 7. Notifies Jules / User
+                    ▼
+             Jules (QA Agent) closes ticket
+```
+
+### 🔍 Immutable Task Audit Lineage
+
+Every state change, git commit hash, PR link, and test output is permanently recorded in SQLite (`task_audit_logs`):
+
+```json
+[
+  { "event_type": "task.created", "agent_id": "agent_jules_8a12", "created_at": 1771485600 },
+  { "event_type": "task.claimed", "agent_id": "agent_coder_7f92", "created_at": 1771485601 },
+  { "event_type": "task.pr_opened", "details": { "commit_sha": "a91f4b23", "pr_url": "https://github.com/RABNEER/EstateFlow/pull/42" } },
+  { "event_type": "task.completed", "details": { "summary": "Fixed duplicate listings. 143 tests passed." } }
+]
+```
 
 <br/>
 
@@ -45,55 +91,32 @@ When autonomous AI agents build software, register accounts on developer platfor
 
 ## 🧑‍🚀 First-Class Agent Identity & Object-Level Security
 
-AgentBox moves beyond generic mailboxes by introducing **First-Class Agent Identities** with strict object-level resource ownership:
+AgentBox provisions persistent identities with fine-grained capability scopes and object-level resource isolation:
 
 ```bash
-# Provision a scoped identity for an autonomous browser QA agent
-npx agentbox-mail agent create browser-qa --capabilities "inbox.read,otp.read,links.read"
+# Provision a scoped identity for an autonomous coding agent
+npx agentbox-mail agent create coder --capabilities "task.claim,task.update,inbox.read,otp.read"
 ```
 
 ```
 ╔══════════════════════════════════════════════════════════════════╗
 ║             🧑‍🚀 AGENT IDENTITY PROVISIONED                      ║
 ╠══════════════════════════════════════════════════════════════════╣
-║  Agent ID     : agent_browser-qa_7f92a1                          ║
-║  Name         : browser-qa                                       ║
-║  Email        : browser-qa-7f92a1@apocalypto.in                  ║
+║  Agent ID     : agent_coder_7f92a1                               ║
+║  Name         : coder                                            ║
+║  Email        : coder-7f92a1@apocalypto.in                       ║
 ║  Auth Token   : agb_92d7e8f1c3a04b12                             ║
-║  Capabilities : ["inbox.read", "otp.read", "links.read"]         ║
+║  Capabilities : ["task.claim", "task.update", "inbox.read"]      ║
 ║  Status       : active                                           ║
 ╚══════════════════════════════════════════════════════════════════╝
 ⚠️  NOTE: Store this auth_token securely. It is only displayed once upon creation and cannot be retrieved again.
 ```
 
 ### 🔐 Multi-Tier Security Enforcement:
-
-```
-                Incoming Tool / API Request
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 1. Validate Auth Token    │ ➔ Reject if invalid or revoked
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 2. Check Capability Scope │ ➔ E.g. Require "otp.read"
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 3. Object-Level Ownership │ ➔ Agent A CANNOT read Agent B's mailbox
-              └─────────────┬─────────────┘
-                            │
-                            ▼
-              ┌───────────────────────────┐
-              │ 4. Execute Protected Tool │
-              └───────────────────────────┘
-```
-
-* **Credential Hygiene**: Tokens are displayed **only once** upon creation. Read endpoints (`get_agent_identity`, `list_agent_identities`) use safe public structs that never leak authentication secrets.
-* **Cross-Agent Isolation**: An agent possessing `otp.read` is strictly restricted to mailboxes it owns (`owner_agent_id`). Attempting cross-mailbox access returns a structured `AccessDenied` error.
+1. **Token Authentication**: Verifies agent identity and status (`active` vs `revoked`).
+2. **Capability Check**: Validates required scope (e.g. `task.dispatch`, `otp.read`, `email.send`).
+3. **Object-Level Resource Ownership**: Agent A possessing `otp.read` is strictly restricted to its own assigned mailboxes (`owner_agent_id`). Attempting cross-agent access returns a structured `AccessDenied` error.
+4. **Credential Hygiene**: Public queries (`get_agent_identity`, `list_agent_identities`) use sanitized structs that never expose tokens.
 
 <br/>
 
@@ -113,40 +136,15 @@ Tested Pipeline: `Raw MIME Ingestion ➔ mail-parser ➔ SafeLink Analysis ➔ R
 
 | Pipeline Metric | Measured Latency | Throughput |
 |---|---|---|
-| **Average (Mean)** | **`681.3 µs`** (0.681 ms) | **1,468 complete MCP cycles/sec** |
-| **p50 Median** | **`590.0 µs`** (0.590 ms) | — |
-| **p95** | **`1.20 ms`** | — |
-| **p99** | **`1.58 ms`** | — |
+| **Average (Mean)** | **`492.2 µs`** (0.492 ms) | **2,032 complete MCP cycles/sec** |
+| **p50 Median** | **`453.9 µs`** (0.453 ms) | — |
+| **p95** | **`783.1 µs`** (0.783 ms) | — |
+| **p99** | **`1.18 ms`** | — |
 
 ### ⚡ Sub-Component Microsecond Latencies (10,000 Iterations):
 * **Event Bus Channel Dispatch**: `0.216 µs` (0.0002 ms) — **4.62 Million events/sec**
 * **Link Safety & Anti-Redirect**: `0.652 µs` (0.0007 ms) — **1.53 Million checks/sec**
 * **OTP Regex Extraction**: `138.2 µs` (0.138 ms) — **7,230 extractions/sec**
-
-> *Note: External email arrival latency depends on upstream mail delivery; once bytes hit AgentBox (SMTP/IMAP/HTTP), end-to-end parsing, DB persistence, capability authorization, and JSON-RPC response completes in **<0.7ms**.*
-
-<br/>
-
----
-
-## 🛡️ Link Safety & Anti-Phishing Engine
-
-To protect autonomous agents from credential harvesting and malicious open redirects, AgentBox parses all inbound links through a deep safety analyzer:
-
-* 🚫 **Open-Redirect Detection**: Inspects parameters like `?redirect=`, `?url=`, `?next=`, `?dest=`, `?to=`.
-* 🚫 **Raw IP Address Defense**: Blocks URLs targeting raw IPv4 addresses instead of reputable hostnames.
-* 🚫 **Punycode Homograph Defense**: Flags Unicode/Punycode domain spoofing (`xn--`).
-* 🔒 **Protocol Validation**: Distinguishes secure HTTPS endpoints from insecure HTTP.
-
-```json
-{
-  "url": "https://signin.aws.amazon.com/verify?token=abc_123",
-  "domain": "signin.aws.amazon.com",
-  "is_safe": true,
-  "has_open_redirect": false,
-  "confidence": 0.98
-}
-```
 
 <br/>
 
@@ -158,16 +156,22 @@ AgentBox implements the **Model Context Protocol (MCP)** specification over `std
 
 | Category | Tool | Parameters | Description |
 |---|---|---|---|
+| **Task Protocol** | **`dispatch_agent_task`** | `action, description, repository?, branch?, priority?, target_agent?, evidence?, acceptance_criteria?, agent_token?` | Dispatches a structured work order from one agent to another. |
+| **Task Protocol** | **`claim_agent_task`** | `task_id, agent_token` | Atomically locks and assigns a task to the claiming worker agent. |
+| **Task Protocol** | **`update_task_progress`** | `task_id, status, commit_sha?, pr_url?, test_results?, note?, agent_token` | Updates task status (`running`, `testing`, `pr_opened`) and records audit log. |
+| **Task Protocol** | **`complete_agent_task`** | `task_id, summary, commit_sha?, pr_url?, test_results?, agent_token` | Closes a task with completion details and emits completion event. |
+| **Task Protocol** | **`list_agent_tasks`** | `status?, agent_token?, limit?` | Lists tasks filtered by lifecycle state or agent identity. |
+| **Task Protocol** | **`get_task_audit_trail`** | `task_id, agent_token?` | Retrieves the immutable audit log and lifecycle history for a task. |
 | **Identity** | **`create_agent_identity`** | `name, capabilities?` | Creates a persistent identity and returns a one-time secret auth token. |
-| **Identity** | **`get_agent_identity`** | `agent_id` | Retrieves public agent capabilities, status, and metadata (token sanitized). |
-| **Identity** | **`list_agent_identities`** | — | Lists all registered public agent identities. |
+| **Identity** | **`get_agent_identity`** | `agent_id` | Retrieves public agent metadata (tokens are sanitized). |
+| **Identity** | **`list_agent_identities`** | — | Lists all registered public agent identities and active policies. |
 | **Identity** | **`revoke_agent_identity`** | `agent_id` | Revokes an agent identity and invalidates its auth token immediately. |
 | **Mailbox** | **`create_agent_inbox`** | `name, address?, agent_token?` | Creates a new virtual mailbox linked to the calling agent identity. |
-| **Mailbox** | **`get_latest_otp`** | `account_id, agent_token?` | Extracts the newest 4–8 digit verification code with ownership validation. |
+| **Mailbox** | **`get_latest_otp`** | `account_id, agent_token?` | Extracts the newest 4–8 digit verification code in **<0.14ms** with ownership check. |
 | **Mailbox** | **`wait_for_email`** | `account_id, timeout_secs?, agent_token?` | **Event-Driven Hook**: Async Tokio broadcast channel wakes the agent in **<0.001ms**. |
-| **Mailbox** | **`get_verification_link`** | `account_id, agent_token?` | Returns parsed activation links with **Link Safety & Anti-Redirect Analysis**. |
+| **Mailbox** | **`get_verification_link`** | `account_id, agent_token?` | Returns parsed activation links with **Deep Link Safety & Anti-Redirect Defense**. |
 | **Mailbox** | **`read_agent_inbox`** | `account_id, limit?, agent_token?` | Retrieves recent messages, full body text, HTML, and sender metadata. |
-| **Mailbox** | **`send_agent_email`** | `account_id, to, subject, body, agent_token?` | Dispatches outbound emails via SMTP relay with capability check. |
+| **Mailbox** | **`send_agent_email`** | `account_id, to, subject, body, agent_token?` | Dispatches outbound emails via SMTP relay with capability authorization. |
 | **Mailbox** | **`delete_agent_inbox`** | `account_id, agent_token?` | Deletes a temporary mailbox and purges stored messages. |
 
 <br/>
@@ -188,7 +192,7 @@ npx agentbox-mail init
 npx agentbox-mail mcp
 
 # Create an Agent Identity with scoped capabilities
-npx agentbox-mail agent create coder --capabilities "inbox.read,otp.read,links.read"
+npx agentbox-mail agent create coder --capabilities "task.claim,task.update,inbox.read,otp.read"
 
 # Retrieve latest OTP code
 npx agentbox-mail otp agent@yourdomain.com
@@ -200,8 +204,6 @@ npx agentbox-mail ui
 ---
 
 ### 2. Native Electron Desktop App
-
-For a complete standalone desktop experience with system tray and OS notifications:
 
 ```bash
 # Clone the repository
@@ -233,7 +235,7 @@ cargo build --release
 
 ```
                                   ┌───────────────────────────┐
-                                  │   Incoming Mail Sources   │
+                                  │   Incoming Mail & Tasks   │
                                   └─────────────┬─────────────┘
                                                 │
                  ┌──────────────────────────────┼──────────────────────────────┐
@@ -258,8 +260,9 @@ cargo build --release
                                  │ Embedded SQLite Storage     │
                                  │       (`agentbox.db`)       │
                                  │  • Accounts  • Identities   │
-                                 │  • Messages  • Capabilities │
+                                 │  • Messages  • Tasks        │
                                  │  • Resource Ownership Graph │
+                                 │  • Task Audit Logs          │
                                  └──────────────┬──────────────┘
                                                 │
                  ┌──────────────────────────────┼──────────────────────────────┐
@@ -267,7 +270,7 @@ cargo build --release
                  ▼                              ▼                              ▼
      ┌───────────────────────┐      ┌───────────────────────┐      ┌───────────────────────┐
      │ Realtime SSE Bus      │      │ MCP Server (stdio)    │      │ Native Desktop App /  │
-     │ (`GET /v1/events`)    │      │ Scoped Capabilities   │      │ Web Dashboard (:3000) │
+     │ (`GET /v1/events`)    │      │ Task Protocol & State │      │ Web Dashboard (:3000) │
      │                       │      │ Object-Level Auth     │      │                       │
      └───────────────────────┘      └───────────────────────┘      └───────────────────────┘
 ```
