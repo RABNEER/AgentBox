@@ -1,7 +1,7 @@
 {
   "name": "agentbox-mail",
-  "version": "2.0.1",
-  "description": "Autonomous AI Mailbox & Instant 2ms OTP Engine for AI Agents (Claude Code, Cursor, Antigravity)",
+  "version": "2.1.0",
+  "description": "The Sovereign Email & Identity Layer for AI Agents (Claude Code, Cursor, Antigravity, OpenAI Swarm)",
   "main": "electron/main.js",
   "bin": {
     "agentbox": "bin/agentbox.js",
