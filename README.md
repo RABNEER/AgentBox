@@ -1,4 +1,4 @@
-# ⚡ AgentBox 2.0 — Autonomous Mailbox & Instant 2ms OTP Engine for AI Agents
+# ⚡ AgentBox — Autonomous Mailbox & Instant 2ms OTP Engine for AI Agents
 
 [![npm version](https://img.shields.io/npm/v/agentbox-mail.svg?style=flat-square&color=black)](https://www.npmjs.com/package/agentbox-mail)
 [![GitHub Release](https://img.shields.io/github/v/release/RABNEER/AgentBox?style=flat-square&color=black)](https://github.com/RABNEER/AgentBox/releases/latest)
@@ -8,7 +8,7 @@
 
 ---
 
-## 🌟 What's New in AgentBox 2.0
+## 🌟 Key Features
 
 * **📦 Headless NPM Package (`npx agentbox-mail`)**: Live on NPM! Run anywhere with `npx agentbox-mail init`, `mcp`, `otp`, `wait`, `ui`.
 * **🧙 In-Dashboard Setup Wizard**: Self-serve provider onboarding with 1-click presets for **Hostinger Mail**, **Titan Mail**, **Google Workspace**, or **Stalwart Mail Server Hub**.
@@ -76,7 +76,7 @@ AgentBox exposes 6 native MCP tools for AI agents over `stdio`:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        AGENTBOX 2.0 ECOSYSTEM                          │
+│                          AGENTBOX ECOSYSTEM                            │
 ├────────────────────────────────────────────────────────────────────────┤
 │                                                                        │
 │  [ Inbound Ingestion Engines ]                                         │

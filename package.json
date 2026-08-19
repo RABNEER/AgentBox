@@ -1,11 +1,11 @@
 {
   "name": "agentbox-mail",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "Autonomous AI Mailbox & Instant 2ms OTP Engine for AI Agents (Claude Code, Cursor, Antigravity)",
   "main": "electron/main.js",
   "bin": {
-    "agentbox": "./bin/agentbox.js",
-    "agentbox-mail": "./bin/agentbox.js"
+    "agentbox": "bin/agentbox.js",
+    "agentbox-mail": "bin/agentbox.js"
   },
   "files": [
     "bin/",
@@ -42,7 +42,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RABNEER/AgentBox.git"
+    "url": "git+https://github.com/RABNEER/AgentBox.git"
   },
   "bugs": {
     "url": "https://github.com/RABNEER/AgentBox/issues"

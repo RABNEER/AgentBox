@@ -97,7 +97,7 @@ function runServer() {
 
 function runInit() {
   console.log('\n====================================================================');
-  console.log('   ⚡ AgentBox 2.0 — 1-Click MCP & AI Skill Auto-Installer');
+  console.log('   ⚡ AgentBox — 1-Click MCP & AI Skill Auto-Installer');
   console.log('====================================================================\n');
 
   const bin = getBinaryPath() || path.join(ROOT_DIR, 'target', 'debug', BINARY_NAME);
@@ -222,10 +222,10 @@ function runCreate(name, address) {
 
 function printHelp() {
   console.log(`
-⚡ AgentBox CLI — Autonomous AI Mailbox Engine (v2.0.0)
+⚡ AgentBox CLI — Autonomous AI Mailbox Engine (v1.0.0)
 
 Usage:
-  npx agentbox <command> [options]
+  npx agentbox-mail <command> [options]
   agentbox <command> [options]
 
 Commands:
