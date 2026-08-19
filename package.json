@@ -6,6 +6,16 @@
   "bin": {
     "agentbox": "./bin/agentbox.js"
   },
+  "files": [
+    "bin/",
+    "electron/",
+    "skills/",
+    "ui/",
+    "interface.html",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node ./bin/agentbox.js ui",
     "app": "electron electron/main.js",
@@ -27,8 +37,16 @@
     "email-automation",
     "electron"
   ],
-  "author": "AgentBox Team",
+  "author": "RABNEER",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/RABNEER/AgentBox.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RABNEER/AgentBox/issues"
+  },
+  "homepage": "https://github.com/RABNEER/AgentBox#readme",
   "devDependencies": {
     "electron": "^31.7.7"
   }

@@ -1,0 +1,23 @@
+# Local data & environment
+.env
+.env.*
+agentbox.db*
+*.sqlite
+*.db
+
+# Rust source & build artifacts
+target/
+src/
+Cargo.toml
+Cargo.lock
+
+# Release zips & binaries
+*.zip
+*.exe
+
+# Task logs & IDE state
+.system_generated/
+scratch/
+.cursor/
+*.bat
+*.ps1
