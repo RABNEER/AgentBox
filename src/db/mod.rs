@@ -236,4 +236,14 @@ impl Database {
 
         Ok(row.and_then(|m| m.extracted_otp))
     }
+
+    #[allow(dead_code)]
+    pub async fn purge_expired_otps(&self, max_age_seconds: i64) -> Result<u64, sqlx::Error> {
+        let cutoff = Utc::now().timestamp() - max_age_seconds;
+        let res = sqlx::query("UPDATE messages SET extracted_otp = NULL WHERE created_at < ? AND extracted_otp IS NOT NULL")
+            .bind(cutoff)
+            .execute(&self.pool)
+            .await?;
+        Ok(res.rows_affected())
+    }
 }

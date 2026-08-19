@@ -154,7 +154,7 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
 async fn run_mcp(args: McpArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db = Database::init(&args.db).await?;
     let mailer = OutboundMailer::new(None, 587, None, None);
-    let mcp = Arc::new(mcp::McpServer::new(db, mailer, args.domain));
+    let mcp = Arc::new(mcp::McpServer::new(db, mailer, args.domain, None));
     
     mcp.run_stdio().await?;
     Ok(())

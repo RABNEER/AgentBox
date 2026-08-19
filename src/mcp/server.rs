@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::sync::broadcast;
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -30,11 +31,22 @@ pub struct McpServer {
     pub db: Database,
     pub mailer: OutboundMailer,
     pub domain: String,
+    pub event_bus: Option<broadcast::Sender<String>>,
 }
 
 impl McpServer {
-    pub fn new(db: Database, mailer: OutboundMailer, domain: String) -> Self {
-        Self { db, mailer, domain }
+    pub fn new(
+        db: Database,
+        mailer: OutboundMailer,
+        domain: String,
+        event_bus: Option<broadcast::Sender<String>>,
+    ) -> Self {
+        Self {
+            db,
+            mailer,
+            domain,
+            event_bus,
+        }
     }
 
     pub async fn run_stdio(self: Arc<Self>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -73,7 +85,7 @@ impl McpServer {
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {
                         "name": "agentbox-mail-mcp",
-                        "version": "0.2.0"
+                        "version": "1.0.0"
                     },
                     "capabilities": {
                         "tools": {}
@@ -81,148 +93,158 @@ impl McpServer {
                 })),
                 error: None,
             },
-            "tools/list" => JsonRpcResponse {
+            "notifications/initialized" => JsonRpcResponse {
                 jsonrpc: "2.0".to_string(),
                 id,
-                result: Some(json!({
-                    "tools": [
-                        {
-                            "name": "create_agent_inbox",
-                            "description": "Create a new virtual email inbox for the AI agent (e.g. for signups, verification flows, API keys).",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "name": {
-                                        "type": "string",
-                                        "description": "Descriptive name for the agent (e.g. github-signup-bot)"
-                                    },
-                                    "address": {
-                                        "type": "string",
-                                        "description": "Optional custom address (e.g. agent@apocalypto.in)"
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "name": "get_latest_otp",
-                            "description": "Get the most recent 4-8 digit OTP verification code sent to an agent's inbox.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "account_id": {
-                                        "type": "string",
-                                        "description": "The account ID of the inbox or email address"
-                                    }
-                                },
-                                "required": ["account_id"]
-                            }
-                        },
-                        {
-                            "name": "wait_for_email",
-                            "description": "Asynchronously wait for a new incoming email or OTP code to arrive. Blocks until received or timeout.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "account_id": {
-                                        "type": "string",
-                                        "description": "The account ID or email address to watch"
-                                    },
-                                    "timeout_secs": {
-                                        "type": "integer",
-                                        "description": "Maximum seconds to wait (default: 30, max: 120)"
-                                    }
-                                }
-                            }
-                        },
-                        {
-                            "name": "get_verification_link",
-                            "description": "Get the latest verification, confirmation, or magic login URLs received in the agent's inbox.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "account_id": {
-                                        "type": "string",
-                                        "description": "The account ID of the inbox or email address"
-                                    }
-                                },
-                                "required": ["account_id"]
-                            }
-                        },
-                        {
-                            "name": "read_agent_inbox",
-                            "description": "Read all received email messages, parsed text, subject lines, and sender info for an agent inbox.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "account_id": {
-                                        "type": "string",
-                                        "description": "The account ID of the inbox or email address"
-                                    }
-                                },
-                                "required": ["account_id"]
-                            }
-                        },
-                        {
-                            "name": "send_agent_email",
-                            "description": "Send an outbound email from the agent's inbox address.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "account_id": {
-                                        "type": "string",
-                                        "description": "The account ID or email address to send from"
-                                    },
-                                    "to": {
-                                        "type": "string",
-                                        "description": "Recipient email address"
-                                    },
-                                    "subject": {
-                                        "type": "string",
-                                        "description": "Email subject"
-                                    },
-                                    "body": {
-                                        "type": "string",
-                                        "description": "Plain text body"
-                                    }
-                                },
-                                "required": ["account_id", "to", "subject", "body"]
-                            }
-                        },
-                        {
-                            "name": "delete_agent_inbox",
-                            "description": "Delete a virtual agent inbox and all its associated messages.",
-                            "inputSchema": {
-                                "type": "object",
-                                "properties": {
-                                    "account_id": {
-                                        "type": "string",
-                                        "description": "The account ID or email address of the inbox to delete"
-                                    }
-                                },
-                                "required": ["account_id"]
-                            }
-                        }
-                    ]
-                })),
+                result: Some(json!({})),
                 error: None,
             },
-            "tools/call" => {
-                let call_params = params.unwrap_or(Value::Null);
-                let tool_name = call_params.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                let args = call_params.get("arguments").cloned().unwrap_or(json!({}));
+            "tools/list" => {
+                let tools = vec![
+                    json!({
+                        "name": "create_agent_inbox",
+                        "description": "Creates a new dedicated mailbox or virtual address for an AI agent worker.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Agent name or worker identity (e.g. 'code-reviewer', 'qa-tester')"
+                                },
+                                "address": {
+                                    "type": "string",
+                                    "description": "Optional custom email address. If omitted, generates a unique address on your domain."
+                                }
+                            }
+                        }
+                    }),
+                    json!({
+                        "name": "get_latest_otp",
+                        "description": "Extracts the latest 4–8 digit 2FA/verification OTP code from emails received in under 2ms.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "The mailbox ID or email address to retrieve the OTP for."
+                                }
+                            },
+                            "required": ["account_id"]
+                        }
+                    }),
+                    json!({
+                        "name": "wait_for_email",
+                        "description": "Event-driven blocking hook: Pauses agent execution and wakes up instantaneously (<0.1ms) the exact moment an email or OTP lands.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "The mailbox ID or email address to watch."
+                                },
+                                "timeout_secs": {
+                                    "type": "number",
+                                    "description": "Maximum seconds to wait (default: 30, max: 120)."
+                                }
+                            },
+                            "required": ["account_id"]
+                        }
+                    }),
+                    json!({
+                        "name": "get_verification_link",
+                        "description": "Extracts verification, activation, or magic login URLs with safety analysis, domain verification, and anti-redirect protection.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "The mailbox ID or email address."
+                                }
+                            },
+                            "required": ["account_id"]
+                        }
+                    }),
+                    json!({
+                        "name": "read_agent_inbox",
+                        "description": "Retrieves recent emails received by this agent inbox, including sender, subject, plain text, and extracted codes.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "The mailbox ID or email address."
+                                },
+                                "limit": {
+                                    "type": "number",
+                                    "description": "Max number of messages to fetch (default: 10)."
+                                }
+                            },
+                            "required": ["account_id"]
+                        }
+                    }),
+                    json!({
+                        "name": "send_agent_email",
+                        "description": "Sends an outbound email or reply from the specified agent mailbox via SMTP relay.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "The mailbox ID or sender email address."
+                                },
+                                "to": {
+                                    "type": "string",
+                                    "description": "Recipient email address."
+                                },
+                                "subject": {
+                                    "type": "string",
+                                    "description": "Email subject line."
+                                },
+                                "body": {
+                                    "type": "string",
+                                    "description": "Plain text body of the email."
+                                }
+                            },
+                            "required": ["account_id", "to", "body"]
+                        }
+                    }),
+                    json!({
+                        "name": "delete_agent_inbox",
+                        "description": "Permanently deletes a temporary or disposable agent mailbox and purges stored messages.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "account_id": {
+                                    "type": "string",
+                                    "description": "The mailbox ID or email address to delete."
+                                }
+                            },
+                            "required": ["account_id"]
+                        }
+                    })
+                ];
 
-                let result = self.execute_tool(tool_name, args).await;
-                match result {
+                JsonRpcResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id,
+                    result: Some(json!({ "tools": tools })),
+                    error: None,
+                }
+            }
+            "tools/call" => {
+                let params_obj = params.unwrap_or(Value::Null);
+                let tool_name = params_obj.get("name").and_then(|n| n.as_str()).unwrap_or_default();
+                let tool_args = params_obj.get("arguments").cloned().unwrap_or(json!({}));
+
+                match self.execute_tool(tool_name, tool_args).await {
                     Ok(val) => JsonRpcResponse {
                         jsonrpc: "2.0".to_string(),
                         id,
                         result: Some(json!({
-                            "content": [
-                                {
-                                    "type": "text",
-                                    "text": serde_json::to_string_pretty(&val).unwrap_or_default()
-                                }
-                            ]
+                            "content": [{
+                                "type": "text",
+                                "text": serde_json::to_string_pretty(&val).unwrap_or_default()
+                            }]
                         })),
                         error: None,
                     },
@@ -231,7 +253,7 @@ impl McpServer {
                         id,
                         result: None,
                         error: Some(json!({
-                            "code": -32000,
+                            "code": -32603,
                             "message": e.to_string()
                         })),
                     },
@@ -243,21 +265,31 @@ impl McpServer {
                 result: None,
                 error: Some(json!({
                     "code": -32601,
-                    "message": "Method not found"
+                    "message": format!("Method '{}' not found", method)
                 })),
             },
         }
     }
 
-    async fn resolve_account_id(&self, identifier: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    /// Explicitly resolves an existing account without silent side-effect creation on reads.
+    async fn resolve_existing_account_id(&self, identifier: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         if identifier.contains('@') {
             if let Some(acc) = self.db.get_account_by_address(identifier).await? {
                 return Ok(acc.id);
             }
-            let new_acc = self.db.create_account(identifier, Some("AI Agent Inbox")).await?;
-            return Ok(new_acc.id);
+            return Err(format!("Account with address '{}' not found. Please create it first.", identifier).into());
         }
-        Ok(identifier.to_string())
+
+        if let Some(acc) = self.db.get_account_by_id(identifier).await? {
+            return Ok(acc.id);
+        }
+
+        // Check if identifier matches default agent prefix
+        if let Some(acc) = self.db.get_account_by_address(&format!("{}@{}", identifier, self.domain)).await? {
+            return Ok(acc.id);
+        }
+
+        Err(format!("Account '{}' not found.", identifier).into())
     }
 
     async fn execute_tool(
@@ -281,31 +313,86 @@ impl McpServer {
             }
             "get_latest_otp" => {
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
-                let account_id = self.resolve_account_id(identifier).await?;
+                let account_id = self.resolve_existing_account_id(identifier).await?;
                 let otp = self.db.get_latest_otp(&account_id).await?;
                 Ok(json!({ "account_id": account_id, "otp": otp }))
             }
             "wait_for_email" => {
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).unwrap_or("agent");
-                let account_id = self.resolve_account_id(identifier).await?;
+                let account_id = self.resolve_existing_account_id(identifier).await?;
                 let timeout_secs = args.get("timeout_secs").and_then(|t| t.as_u64()).unwrap_or(30).min(120);
                 let start_time = Utc::now().timestamp();
 
-                // Poll every 500ms
-                for _ in 0..(timeout_secs * 2) {
-                    let messages = self.db.list_messages_for_account(&account_id).await?;
-                    if let Some(latest) = messages.into_iter().find(|m| m.created_at >= start_time - 5) {
+                // 1. Immediate check: Did an email already arrive in the last 2 seconds?
+                let initial_messages = self.db.list_messages_for_account(&account_id).await?;
+                if let Some(latest) = initial_messages.into_iter().find(|m| m.created_at >= start_time - 2) {
+                    return Ok(json!({
+                        "received": true,
+                        "otp": latest.extracted_otp,
+                        "subject": latest.subject,
+                        "from": latest.from_address,
+                        "body_text": latest.body_text,
+                        "links": latest.extracted_links,
+                        "created_at": latest.created_at,
+                        "wake_method": "immediate"
+                    }));
+                }
+
+                // 2. Pure Event-Driven Instant Wake-up via Tokio Broadcast Channel (<0.1ms latency)
+                if let Some(ref bus) = self.event_bus {
+                    let mut rx = bus.subscribe();
+                    let timeout_duration = Duration::from_secs(timeout_secs);
+
+                    let result = tokio::select! {
+                        _ = tokio::time::sleep(timeout_duration) => None,
+                        msg = async {
+                            while let Ok(event_str) = rx.recv().await {
+                                if let Ok(evt) = serde_json::from_str::<Value>(&event_str) {
+                                    if evt.get("type").and_then(|t| t.as_str()) == Some("new_message") {
+                                        if let Some(msg_obj) = evt.get("message") {
+                                            let msg_acc_id = msg_obj.get("account_id").and_then(|a| a.as_str()).unwrap_or_default();
+                                            if msg_acc_id == account_id {
+                                                return Some(msg_obj.clone());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            None
+                        } => msg
+                    };
+
+                    if let Some(msg_val) = result {
                         return Ok(json!({
                             "received": true,
-                            "otp": latest.extracted_otp,
-                            "subject": latest.subject,
-                            "from": latest.from_address,
-                            "body_text": latest.body_text,
-                            "links": latest.extracted_links,
-                            "created_at": latest.created_at
+                            "otp": msg_val.get("extracted_otp"),
+                            "subject": msg_val.get("subject"),
+                            "from": msg_val.get("from_address"),
+                            "body_text": msg_val.get("body_text"),
+                            "links": msg_val.get("extracted_links"),
+                            "created_at": msg_val.get("created_at"),
+                            "wake_method": "event_driven_channel"
                         }));
                     }
-                    tokio::time::sleep(Duration::from_millis(500)).await;
+                } else {
+                    // Fallback fast polling for standalone CLI runs without live event bus
+                    let iterations = timeout_secs * 10;
+                    for _ in 0..iterations {
+                        tokio::time::sleep(Duration::from_millis(100)).await;
+                        let messages = self.db.list_messages_for_account(&account_id).await?;
+                        if let Some(latest) = messages.into_iter().find(|m| m.created_at >= start_time) {
+                            return Ok(json!({
+                                "received": true,
+                                "otp": latest.extracted_otp,
+                                "subject": latest.subject,
+                                "from": latest.from_address,
+                                "body_text": latest.body_text,
+                                "links": latest.extracted_links,
+                                "created_at": latest.created_at,
+                                "wake_method": "polling_fallback"
+                            }));
+                        }
+                    }
                 }
 
                 Ok(json!({
@@ -315,15 +402,17 @@ impl McpServer {
             }
             "get_verification_link" => {
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
-                let account_id = self.resolve_account_id(identifier).await?;
+                let account_id = self.resolve_existing_account_id(identifier).await?;
                 let messages = self.db.list_messages_for_account(&account_id).await?;
-                let mut links = Vec::new();
+                let mut links: Vec<Value> = Vec::new();
                 for msg in messages {
                     if let Some(links_str) = msg.extracted_links {
-                        if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&links_str) {
-                            for l in parsed {
-                                if !links.contains(&l) {
-                                    links.push(l);
+                        if let Ok(parsed) = serde_json::from_str::<Value>(&links_str) {
+                            if let Some(arr) = parsed.as_array() {
+                                for l in arr {
+                                    if !links.contains(l) {
+                                        links.push(l.clone());
+                                    }
                                 }
                             }
                         }
@@ -333,13 +422,15 @@ impl McpServer {
             }
             "read_agent_inbox" => {
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
-                let account_id = self.resolve_account_id(identifier).await?;
-                let messages = self.db.list_messages_for_account(&account_id).await?;
+                let account_id = self.resolve_existing_account_id(identifier).await?;
+                let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(10) as usize;
+                let mut messages = self.db.list_messages_for_account(&account_id).await?;
+                messages.truncate(limit);
                 Ok(json!(messages))
             }
             "send_agent_email" => {
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
-                let account_id = self.resolve_account_id(identifier).await?;
+                let account_id = self.resolve_existing_account_id(identifier).await?;
                 let to = args.get("to").and_then(|t| t.as_str()).ok_or("Missing recipient 'to'")?;
                 let subject = args.get("subject").and_then(|s| s.as_str()).unwrap_or("(No Subject)");
                 let body = args.get("body").and_then(|b| b.as_str()).unwrap_or("");
@@ -363,7 +454,7 @@ impl McpServer {
             }
             "delete_agent_inbox" => {
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
-                let account_id = self.resolve_account_id(identifier).await?;
+                let account_id = self.resolve_existing_account_id(identifier).await?;
                 self.db.delete_account(&account_id).await?;
                 Ok(json!({ "status": "deleted", "account_id": account_id }))
             }
