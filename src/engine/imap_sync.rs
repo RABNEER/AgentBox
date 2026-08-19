@@ -164,6 +164,35 @@ impl ImapSyncWorker {
                 to_addr, parsed.from, extracted.otp
             );
 
+            // Auto-detect and provision AgentTask if email represents a work order
+            if let Some(task) = crate::engine::tasks::TaskDetector::detect_and_parse(
+                message.subject.as_deref(),
+                message.body_text.as_deref(),
+                &message.from_address,
+                &message.to_address,
+            ) {
+                let audit = crate::engine::tasks::TaskAuditLog::new(
+                    &task.id,
+                    &task.source_agent_id,
+                    "task.created_from_email",
+                    Some(serde_json::json!({
+                        "email_message_id": message.id,
+                        "subject": message.subject,
+                        "action": task.action,
+                        "repository": task.repository
+                    })),
+                );
+                if let Ok(created_task) = self.db.create_task(&task, &audit).await {
+                    let _ = self.tx.send(
+                        serde_json::json!({
+                            "type": "new_task",
+                            "task": created_task
+                        })
+                        .to_string(),
+                    );
+                }
+            }
+
             // Broadcast to Web Dashboard & AI Agents via SSE
             let event_payload = serde_json::json!({
                 "type": "new_message",

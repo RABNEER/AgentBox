@@ -505,3 +505,153 @@ async fn test_autonomous_agent_task_orchestration_and_audit_lineage() {
     assert_eq!(audit_logs[2]["event_type"], "task.pr_opened");
     assert_eq!(audit_logs[3]["event_type"], "task.completed");
 }
+
+#[tokio::test]
+async fn test_automatic_email_to_agent_task_and_mcp_orchestration() {
+    let db = Database::init("sqlite::memory:")
+        .await
+        .expect("InMemory SQLite DB failed");
+    let mailer = OutboundMailer::new(None, 587, None, None);
+    let (tx, _) = broadcast::channel::<String>(100);
+
+    let mcp = Arc::new(McpServer::new(
+        db.clone(),
+        mailer,
+        "apocalypto.in".to_string(),
+        Some(tx.clone()),
+    ));
+
+    // 1. Provision Coder Agent Identity
+    let coder = db
+        .create_agent_identity(
+            "coder",
+            "coder@apocalypto.in",
+            &[
+                "task.claim".to_string(),
+                "task.update".to_string(),
+                "task.read".to_string(),
+            ],
+        )
+        .await
+        .unwrap();
+
+    // 2. Jules sends an email over SMTP format
+    let raw_email = b"From: jules@external.ai\r\nTo: coder@apocalypto.in\r\nSubject: [TASK:BUG] Fix duplicate property filter in EstateFlow\r\nContent-Type: text/plain\r\n\r\nRepository: RABNEER/EstateFlow\r\nPriority: high\r\nEvidence: tests/property-search.spec.ts:87\r\nExpected: Deduplicate property query results";
+
+    let parsed = EmailParser::parse_mime(raw_email).expect("MIME parse failed");
+
+    // Simulate Inbound Ingestion Pipeline with TaskDetector
+    let msg_id = format!("msg_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
+    let account = db
+        .get_account_by_address("coder@apocalypto.in")
+        .await
+        .unwrap()
+        .unwrap();
+    let message = Message {
+        id: msg_id.clone(),
+        account_id: account.id.clone(),
+        from_address: parsed.from.clone(),
+        to_address: "coder@apocalypto.in".to_string(),
+        subject: parsed.subject.clone(),
+        body_text: parsed.body_text.clone(),
+        body_html: None,
+        raw_mime: Some(String::from_utf8_lossy(raw_email).to_string()),
+        extracted_otp: None,
+        extracted_links: None,
+        direction: "inbound".to_string(),
+        created_at: chrono::Utc::now().timestamp(),
+    };
+    db.insert_message(&message).await.unwrap();
+
+    // TaskDetector auto-provisions task
+    let task = agentbox_mail::engine::tasks::TaskDetector::detect_and_parse(
+        message.subject.as_deref(),
+        message.body_text.as_deref(),
+        &message.from_address,
+        &message.to_address,
+    )
+    .expect("Email must be recognized as an AgentTask");
+
+    let audit = agentbox_mail::engine::tasks::TaskAuditLog::new(
+        &task.id,
+        &task.source_agent_id,
+        "task.created_from_email",
+        Some(json!({ "email_msg_id": message.id })),
+    );
+    let created_task = db.create_task(&task, &audit).await.unwrap();
+    assert_eq!(created_task.action, "fix_bug");
+    assert_eq!(
+        created_task.repository.as_deref(),
+        Some("RABNEER/EstateFlow")
+    );
+    assert_eq!(created_task.priority, "high");
+
+    // 3. Coder Agent queries tasks via MCP and claims the auto-created work order
+    let list_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "list_agent_tasks",
+                "arguments": {
+                    "status": "received",
+                    "agent_token": coder.auth_token
+                }
+            })),
+            json!(1),
+        )
+        .await;
+
+    assert!(list_res.result.is_some());
+    let list_text = list_res.result.unwrap()["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let tasks: Vec<serde_json::Value> = serde_json::from_str(&list_text).unwrap();
+    assert!(
+        !tasks.is_empty(),
+        "Auto-created task must appear in task list"
+    );
+
+    // 4. Coder claims the auto-created task
+    let claim_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "claim_agent_task",
+                "arguments": {
+                    "task_id": created_task.id,
+                    "agent_token": coder.auth_token
+                }
+            })),
+            json!(2),
+        )
+        .await;
+
+    assert!(
+        claim_res.result.is_some(),
+        "Coder must successfully claim the auto-created task"
+    );
+
+    // 5. Coder completes the task
+    let complete_res = mcp
+        .handle_request(
+            "tools/call".to_string(),
+            Some(json!({
+                "name": "complete_agent_task",
+                "arguments": {
+                    "task_id": created_task.id,
+                    "summary": "Fixed duplicate query results from email work order",
+                    "commit_sha": "f12a890",
+                    "pr_url": "https://github.com/RABNEER/EstateFlow/pull/43",
+                    "agent_token": coder.auth_token
+                }
+            })),
+            json!(3),
+        )
+        .await;
+
+    assert!(
+        complete_res.result.is_some(),
+        "Task must be marked completed"
+    );
+}

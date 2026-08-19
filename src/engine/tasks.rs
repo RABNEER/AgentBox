@@ -1,7 +1,26 @@
 use chrono::Utc;
+use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use uuid::Uuid;
+
+static TASK_SUBJECT_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(
+        r"(?i)\[TASK(?::([a-z0-9_-]+))?\]|\[BUG\]|\[FEATURE\]|\[REVIEW\]|^TASK:|^BUG:|^ISSUE:",
+    )
+    .unwrap()
+});
+
+static REPO_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?i)(?:Repository|Repo):\s*([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)|github\.com/([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)").unwrap()
+});
+
+static BRANCH_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)Branch:\s*([a-zA-Z0-9_.-]+)").unwrap());
+
+static PRIORITY_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?i)Priority:\s*(low|normal|high|urgent|critical)").unwrap());
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -170,5 +189,172 @@ impl TaskAuditLog {
             details_json: details.map(|d| d.to_string()),
             created_at: Utc::now().timestamp(),
         }
+    }
+}
+
+/// Automatically detects and parses incoming emails into first-class AgentTasks
+pub struct TaskDetector;
+
+impl TaskDetector {
+    pub fn detect_and_parse(
+        subject: Option<&str>,
+        body_text: Option<&str>,
+        from_address: &str,
+        to_address: &str,
+    ) -> Option<AgentTask> {
+        let subject_str = subject.unwrap_or("").trim();
+        let body_str = body_text.unwrap_or("").trim();
+
+        // 1. JSON Task Protocol Payload in body
+        if body_str.starts_with('{') && body_str.ends_with('}') {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(body_str) {
+                if val.get("type").and_then(|t| t.as_str()) == Some("task") {
+                    let action = val
+                        .get("action")
+                        .and_then(|a| a.as_str())
+                        .unwrap_or("general_task");
+                    let repo = val.get("repository").and_then(|r| r.as_str());
+                    let branch = val.get("branch").and_then(|b| b.as_str());
+                    let priority = TaskPriority::from_str(
+                        val.get("priority")
+                            .and_then(|p| p.as_str())
+                            .unwrap_or("normal"),
+                    );
+                    let desc = val
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .unwrap_or(subject_str);
+
+                    let evidence = val.get("evidence").and_then(|e| e.as_array()).map(|arr| {
+                        arr.iter()
+                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                            .collect()
+                    });
+
+                    let criteria = val
+                        .get("acceptance_criteria")
+                        .and_then(|a| a.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect()
+                        });
+
+                    let target = val
+                        .get("to")
+                        .and_then(|t| t.as_str())
+                        .or_else(|| to_address.split('@').next());
+
+                    return Some(AgentTask::new(
+                        from_address,
+                        target,
+                        action,
+                        repo,
+                        branch,
+                        priority,
+                        desc,
+                        evidence,
+                        criteria,
+                    ));
+                }
+            }
+        }
+
+        // 2. Structured Email Task Detection ([TASK:...], [BUG], [FEATURE], TASK:, BUG:)
+        if TASK_SUBJECT_PATTERN.is_match(subject_str) {
+            let action = if subject_str.to_lowercase().contains("bug") {
+                "fix_bug"
+            } else if subject_str.to_lowercase().contains("review") {
+                "code_review"
+            } else if subject_str.to_lowercase().contains("feature") {
+                "implement_feature"
+            } else if subject_str.to_lowercase().contains("test") {
+                "e2e_test"
+            } else {
+                "general_task"
+            };
+
+            // Extract Repository from body or subject
+            let repo = REPO_PATTERN
+                .captures(body_str)
+                .or_else(|| REPO_PATTERN.captures(subject_str))
+                .and_then(|c| c.get(1).or_else(|| c.get(2)))
+                .map(|m| m.as_str());
+
+            // Extract Branch
+            let branch = BRANCH_PATTERN
+                .captures(body_str)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str());
+
+            // Extract Priority
+            let priority =
+                if let Some(cap) = PRIORITY_PATTERN.captures(body_str).and_then(|c| c.get(1)) {
+                    TaskPriority::from_str(cap.as_str())
+                } else if subject_str.to_uppercase().contains("URGENT")
+                    || subject_str.to_uppercase().contains("HIGH")
+                {
+                    TaskPriority::High
+                } else {
+                    TaskPriority::Normal
+                };
+
+            // Extract Evidence lines
+            let mut evidence = Vec::new();
+            let mut criteria = Vec::new();
+
+            for line in body_str.lines() {
+                let trimmed = line.trim();
+                if trimmed.starts_with("Evidence:")
+                    || trimmed.starts_with("File:")
+                    || trimmed.starts_with("Trace:")
+                {
+                    evidence.push(
+                        trimmed
+                            .splitn(2, ':')
+                            .nth(1)
+                            .unwrap_or("")
+                            .trim()
+                            .to_string(),
+                    );
+                } else if trimmed.starts_with("Expected:")
+                    || trimmed.starts_with("Acceptance Criteria:")
+                    || trimmed.starts_with("- [ ]")
+                {
+                    criteria.push(trimmed.trim_start_matches("- [ ]").trim().to_string());
+                }
+            }
+
+            let evidence_opt = if evidence.is_empty() {
+                None
+            } else {
+                Some(evidence)
+            };
+            let criteria_opt = if criteria.is_empty() {
+                None
+            } else {
+                Some(criteria)
+            };
+
+            let target = to_address.split('@').next();
+
+            return Some(AgentTask::new(
+                from_address,
+                target,
+                action,
+                repo,
+                branch,
+                priority,
+                if body_str.is_empty() {
+                    subject_str
+                } else {
+                    body_str
+                },
+                evidence_opt,
+                criteria_opt,
+            ));
+        }
+
+        None
     }
 }

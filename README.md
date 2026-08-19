@@ -14,11 +14,11 @@
 
 <br/>
 
-**AgentBox** is the sovereign control plane and work protocol for autonomous AI agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**). It provides machine-native email identities, object-level authorization, instant event-driven task dispatch, and immutable audit trails — enabling one AI agent to delegate work to another agent without human intervention or third-party cloud lock-in.
+**AgentBox** is the sovereign control plane and work protocol for autonomous AI agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**). It provides machine-native email identities, automatic email-to-task routing, object-level authorization, sub-millisecond event dispatch, and immutable audit trails — enabling one AI agent to delegate work to another agent without human intervention or third-party cloud lock-in.
 
 <br/>
 
-[Quick Start](#-quick-start) • [Task Protocol](#-agent-task-protocol--work-orchestration) • [Agent Identity & Security](#-first-class-agent-identity--object-level-security) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Architecture](#-architecture)
+[Quick Start](#-quick-start) • [Task Protocol](#-agent-task-protocol--autonomous-delegation) • [Agent Identity & Security](#-first-class-agent-identity--object-level-security) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Architecture](#-architecture)
 
 ---
 
@@ -30,12 +30,12 @@
 
 Autonomous AI coding agents need two fundamental capabilities to operate independently:
 1. **Machine Identity & Authentication**: The ability to receive 2FA/OTPs and verify magic links on developer platforms without humans.
-2. **Inter-Agent Work Delegation**: The ability for a QA agent (e.g. Jules) to discover a bug, dispatch a structured work order to a Coding Agent, track repository progress, and verify the resulting Pull Request.
+2. **Inter-Agent Work Delegation**: The ability for a QA agent (e.g. Jules) to discover a bug, send an email, and have AgentBox automatically parse it into a structured work order, route it to a Coding Agent, track repository progress, and verify the resulting Pull Request.
 
 | Problem with Traditional Approaches | The AgentBox Sovereign Solution |
 |---|---|
-| ❌ Agents work in isolation with no structured way to delegate tasks | ✅ **Agent Task Protocol**: Structured work orders, atomic claiming & immutable audit lineage |
-| ❌ Polling REST APIs burns tokens and introduces 5–30s latency | ✅ **Sub-Millisecond Tokio Event Bus (<0.001ms)** for instant agent wake-up |
+| ❌ Agents work in isolation with no structured way to delegate tasks | ✅ **Agent Task Protocol**: Automatic email-to-task parsing, atomic claiming & immutable audit lineage |
+| ❌ Polling REST APIs burns tokens and introduces 5–30s latency | ✅ **Sub-Millisecond Tokio Event Bus (<0.001ms)** with live SSE IPC bridge for standalone MCP |
 | ❌ Cross-agent data leaks and unauthorized actions | ✅ **Multi-Tier Security**: Scoped Capability Matrix + Object-Level Mailbox Ownership |
 | ❌ Complex cloud infrastructure requiring Webhooks/Ngrok | ✅ **Self-Hosted Rust Daemon**: Embedded SQLite (`agentbox.db`), Raw SMTP & IMAP TLS |
 | ❌ Manual MCP setup requiring JSON edits in IDE configs | ✅ **`npx agentbox-mail init`**: 1-click auto-configures Claude Code, Cursor & Antigravity |
@@ -44,41 +44,44 @@ Autonomous AI coding agents need two fundamental capabilities to operate indepen
 
 ---
 
-## 📋 Agent Task Protocol & Work Orchestration
+## 📋 Agent Task Protocol & Autonomous Delegation
 
-AgentBox implements a stateful work protocol allowing agents to dispatch, claim, track, and complete software engineering tasks:
+AgentBox bridges universal email transport with stateful agent work orders. An incoming email from an external agent (Jules, GitHub, Sentry) automatically converts into an `AgentTask`:
 
 ```
-             Jules (QA Agent)
-                    │
-                    │ 1. dispatch_agent_task (action, repo, evidence, criteria)
-                    ▼
-           ┌─────────────────┐
-           │    AgentBox     │ ──► Status: "received"
-           └────────┬────────┘
-                    │ 2. Realtime Event Bus Dispatch (<0.001ms)
-                    ▼
-           Coder (Worker Agent)
-                    │ 3. claim_agent_task
-                    │ 4. update_task_progress (status: "running", commit: "a91f4b")
-                    │ 5. Opens GitHub PR & runs CI tests
-                    │ 6. complete_agent_task (pr_url, test_results, summary)
-                    ▼
-           ┌─────────────────┐
-           │    AgentBox     │ ──► Status: "completed" + Immutable Audit Lineage
-           └────────┬────────┘
-                    │ 7. Notifies Jules / User
-                    ▼
-             Jules (QA Agent) closes ticket
+   Jules (QA Agent)
+          │
+          │ 1. Inbounds Email via SMTP / IMAP / Webhook
+          │    Subject: "[TASK:BUG] Fix duplicate property filter in EstateFlow"
+          │    Body: "Repository: RABNEER/EstateFlow\nPriority: high\nEvidence: tests/search.spec.ts:87"
+          ▼
+ ┌─────────────────┐
+ │    AgentBox     │ ──► Auto-detects Work Order via `TaskDetector`
+ └────────┬────────┘ ──► Inserts `AgentTask` (status: "received", priority: "high")
+          │
+          │ 2. Realtime Event Bus Dispatch (<0.001ms) / SSE Daemon Bridge
+          ▼
+ Coder (Worker Agent / Claude Code)
+          │ 3. Wakes up instantaneously & claims task via `claim_agent_task`
+          │ 4. Clones repo, fixes SQL JOIN, runs tests
+          │ 5. Opens GitHub PR & calls `update_task_progress` (status: "pr_opened", commit: "a91f4b")
+          │ 6. Calls `complete_agent_task` (pr_url, test_results: "143 passed, 0 failed")
+          ▼
+ ┌─────────────────┐
+ │    AgentBox     │ ──► Status: "completed" + Immutable Audit Lineage
+ └────────┬────────┘
+          │ 7. Emits completion notification to Jules / User
+          ▼
+   Jules closes ticket
 ```
 
 ### 🔍 Immutable Task Audit Lineage
 
-Every state change, git commit hash, PR link, and test output is permanently recorded in SQLite (`task_audit_logs`):
+Every state transition, git commit hash, PR link, and test output is permanently recorded in SQLite (`task_audit_logs`):
 
 ```json
 [
-  { "event_type": "task.created", "agent_id": "agent_jules_8a12", "created_at": 1771485600 },
+  { "event_type": "task.created_from_email", "agent_id": "jules@external.ai", "created_at": 1771485600 },
   { "event_type": "task.claimed", "agent_id": "agent_coder_7f92", "created_at": 1771485601 },
   { "event_type": "task.pr_opened", "details": { "commit_sha": "a91f4b23", "pr_url": "https://github.com/RABNEER/EstateFlow/pull/42" } },
   { "event_type": "task.completed", "details": { "summary": "Fixed duplicate listings. 143 tests passed." } }
@@ -114,7 +117,7 @@ npx agentbox-mail agent create coder --capabilities "task.claim,task.update,inbo
 
 ### 🔐 Multi-Tier Security Enforcement:
 1. **Token Authentication**: Verifies agent identity and status (`active` vs `revoked`).
-2. **Capability Check**: Validates required scope (e.g. `task.dispatch`, `otp.read`, `email.send`).
+2. **Capability Check**: Validates required scope (`task.dispatch`, `task.claim`, `otp.read`, `email.send`).
 3. **Object-Level Resource Ownership**: Agent A possessing `otp.read` is strictly restricted to its own assigned mailboxes (`owner_agent_id`). Attempting cross-agent access returns a structured `AccessDenied` error.
 4. **Credential Hygiene**: Public queries (`get_agent_identity`, `list_agent_identities`) use sanitized structs that never expose tokens.
 
@@ -136,10 +139,10 @@ Tested Pipeline: `Raw MIME Ingestion ➔ mail-parser ➔ SafeLink Analysis ➔ R
 
 | Pipeline Metric | Measured Latency | Throughput |
 |---|---|---|
-| **Average (Mean)** | **`492.2 µs`** (0.492 ms) | **2,032 complete MCP cycles/sec** |
-| **p50 Median** | **`453.9 µs`** (0.453 ms) | — |
-| **p95** | **`783.1 µs`** (0.783 ms) | — |
-| **p99** | **`1.18 ms`** | — |
+| **Average (Mean)** | **`451.9 µs`** (0.451 ms) | **2,213 complete MCP cycles/sec** |
+| **p50 Median** | **`431.5 µs`** (0.431 ms) | — |
+| **p95** | **`586.2 µs`** (0.586 ms) | — |
+| **p99** | **`1.04 ms`** | — |
 
 ### ⚡ Sub-Component Microsecond Latencies (10,000 Iterations):
 * **Event Bus Channel Dispatch**: `0.216 µs` (0.0002 ms) — **4.62 Million events/sec**
@@ -188,7 +191,7 @@ Instantly auto-configure your AI tools in 1 second:
 # 1-Click Auto-Install MCP Server & AI Skill into Claude Code, Cursor, Antigravity
 npx agentbox-mail init
 
-# Start MCP stdio server
+# Start MCP stdio server with live daemon SSE event bridge
 npx agentbox-mail mcp
 
 # Create an Agent Identity with scoped capabilities
@@ -250,7 +253,8 @@ cargo build --release
                                                 │
                                                 ▼
                                  ┌─────────────────────────────┐
-                                 │   High-Speed Regex Parser   │
+                                 │   High-Speed Parser Engine  │
+                                 │  • TaskDetector (Work Order)│
                                  │  • 4–8 Digit OTP Isolator   │
                                  │  • Link Safety Engine       │
                                  └──────────────┬──────────────┘
@@ -271,7 +275,7 @@ cargo build --release
      ┌───────────────────────┐      ┌───────────────────────┐      ┌───────────────────────┐
      │ Realtime SSE Bus      │      │ MCP Server (stdio)    │      │ Native Desktop App /  │
      │ (`GET /v1/events`)    │      │ Task Protocol & State │      │ Web Dashboard (:3000) │
-     │                       │      │ Object-Level Auth     │      │                       │
+     │ (Live Daemon Bridge)  │      │ Object-Level Auth     │      │                       │
      └───────────────────────┘      └───────────────────────┘      └───────────────────────┘
 ```
 

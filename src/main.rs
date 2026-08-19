@@ -187,10 +187,40 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
 async fn run_mcp(args: McpArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let db = Database::init(&args.db).await?;
     let mailer = OutboundMailer::new(None, 587, None, None);
-    let mcp = Arc::new(mcp::McpServer::new(db, mailer, args.domain, None));
+    let (tx, _) = tokio::sync::broadcast::channel::<String>(200);
+
+    // Spawn background SSE listener to bridge events from running AgentBox daemon
+    let tx_bridge = tx.clone();
+    tokio::spawn(async move {
+        bridge_daemon_sse_events(tx_bridge).await;
+    });
+
+    let mcp = Arc::new(mcp::McpServer::new(db, mailer, args.domain, Some(tx)));
 
     mcp.run_stdio().await?;
     Ok(())
+}
+
+async fn bridge_daemon_sse_events(tx: tokio::sync::broadcast::Sender<String>) {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    loop {
+        if let Ok(stream) = tokio::net::TcpStream::connect("127.0.0.1:3000").await {
+            let (reader, mut writer) = tokio::io::split(stream);
+            let req = "GET /v1/events HTTP/1.1\r\nHost: 127.0.0.1:3000\r\nAccept: text/event-stream\r\nConnection: keep-alive\r\n\r\n";
+            if writer.write_all(req.as_bytes()).await.is_ok() {
+                let mut lines = BufReader::new(reader).lines();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    if let Some(data) = line.strip_prefix("data:") {
+                        let trimmed = data.trim();
+                        if !trimmed.is_empty() {
+                            let _ = tx.send(trimmed.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
 }
 
 async fn run_create(args: CreateArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

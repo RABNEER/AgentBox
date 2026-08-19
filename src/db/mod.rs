@@ -490,7 +490,7 @@ impl Database {
         let mut query = String::from("SELECT * FROM agent_tasks WHERE 1=1");
         if agent_id.is_some() {
             query.push_str(
-                " AND (source_agent_id = ? OR target_agent_id = ? OR assigned_agent_id = ?)",
+                " AND (source_agent_id = ? OR target_agent_id = ? OR target_agent_id = ? OR assigned_agent_id = ? OR target_agent_id IS NULL OR status = 'received')",
             );
         }
         if status.is_some() {
@@ -500,7 +500,11 @@ impl Database {
 
         let mut q = sqlx::query_as::<_, AgentTask>(&query);
         if let Some(aid) = agent_id {
-            q = q.bind(aid).bind(aid).bind(aid);
+            let prefix = aid
+                .strip_prefix("agent_")
+                .and_then(|s| s.split('_').next())
+                .unwrap_or(aid);
+            q = q.bind(aid).bind(aid).bind(prefix).bind(aid);
         }
         if let Some(st) = status {
             q = q.bind(st);
