@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { spawn } = require('child_process');
 const http = require('http');
 
@@ -7,37 +8,36 @@ let mainWindow = null;
 let tray = null;
 let rustProcess = null;
 let isQuitting = false;
-
-const fs = require('fs');
-
 let activePort = 3000;
 
-// 1. Child Process Management (Spawn background Rust engine if not active)
-function isServerRunning(port = 3000) {
+// 1. Fast, non-blocking server check
+function checkServer(port = 3000) {
     return new Promise((resolve) => {
-        const req = http.get(`http://localhost:${port}/v1/config`, (res) => {
+        const req = http.get(`http://127.0.0.1:${port}/v1/config`, (res) => {
             resolve(res.statusCode === 200 || res.statusCode === 404);
         });
         req.on('error', () => resolve(false));
-        req.setTimeout(800, () => {
+        req.setTimeout(300, () => {
             req.destroy();
             resolve(false);
         });
     });
 }
 
-async function ensureBackendEngine() {
-    // Check if server is already running on 3000..3015
-    for (let p = 3000; p <= 3015; p++) {
-        if (await isServerRunning(p)) {
-            activePort = p;
-            console.log(`[Electron] AgentBox Rust daemon is already running on port ${activePort}.`);
-            setupSSEListener(activePort);
-            return activePort;
-        }
+// 2. Start background Rust Engine asynchronously
+async function startBackendEngine() {
+    // Check if already running on 3000 or 3001
+    if (await checkServer(3000)) {
+        activePort = 3000;
+        setupSSEListener(activePort);
+        return activePort;
+    }
+    if (await checkServer(3001)) {
+        activePort = 3001;
+        setupSSEListener(activePort);
+        return activePort;
     }
 
-    console.log('[Electron] Spawning AgentBox Rust engine background daemon...');
     const possiblePaths = [
         path.join(process.resourcesPath, 'bin', 'agentbox-mail.exe'),
         path.join(process.resourcesPath, 'agentbox-mail.exe'),
@@ -53,67 +53,67 @@ async function ensureBackendEngine() {
         binPath = path.join(__dirname, '..', 'target', 'release', 'agentbox-mail.exe');
     }
 
-    try {
-        rustProcess = spawn(binPath, ['server', '--port', '3000'], {
-            cwd: app.isPackaged ? app.getPath('userData') : path.join(__dirname, '..'),
-            stdio: 'ignore',
-            detached: false,
-            windowsHide: true,
-        });
+    if (fs.existsSync(binPath)) {
+        try {
+            rustProcess = spawn(binPath, ['server', '--port', '3000'], {
+                cwd: app.isPackaged ? app.getPath('userData') : path.join(__dirname, '..'),
+                stdio: 'ignore',
+                detached: false,
+                windowsHide: true,
+            });
 
-        rustProcess.on('error', (err) => {
-            console.error('[Electron] Failed to spawn Rust binary:', err);
-        });
-
-        // Wait for server to boot on 3000..3015
-        for (let i = 0; i < 25; i++) {
-            await new Promise((r) => setTimeout(r, 300));
-            for (let p = 3000; p <= 3015; p++) {
-                if (await isServerRunning(p)) {
-                    activePort = p;
-                    console.log(`[Electron] Connected to freshly spawned AgentBox engine on port ${activePort}.`);
-                    setupSSEListener(activePort);
-                    return activePort;
-                }
-            }
+            rustProcess.on('error', (err) => {
+                console.error('[Electron] Backend daemon error:', err);
+            });
+        } catch (err) {
+            console.error('[Electron] Failed to start backend engine:', err);
         }
-    } catch (err) {
-        console.error('[Electron] Error starting background engine:', err);
+    }
+
+    // Fast poll for server readiness (max 4 seconds)
+    for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (await checkServer(3000)) {
+            activePort = 3000;
+            break;
+        }
+        if (await checkServer(3001)) {
+            activePort = 3001;
+            break;
+        }
     }
 
     setupSSEListener(activePort);
     return activePort;
 }
 
-// 2. Native Desktop OS Notifications via SSE
-function setupSSEListener() {
+// 3. Realtime SSE Notifications
+function setupSSEListener(port) {
     try {
-        const req = http.get('http://localhost:3000/v1/events', (res) => {
+        const req = http.get(`http://127.0.0.1:${port}/v1/events`, (res) => {
             let buffer = '';
             res.on('data', (chunk) => {
                 buffer += chunk.toString();
                 const lines = buffer.split('\n\n');
-                buffer = lines.pop(); // keep remainder
+                buffer = lines.pop();
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
                         try {
                             const data = JSON.parse(line.substring(6));
                             if (data.type === 'new_message' && data.message) {
-                                const msg = data.message;
-                                showNativeNotification(msg);
+                                showNativeNotification(data.message);
                             }
                         } catch (e) {}
                     }
                 }
             });
         });
-        req.on('error', (e) => {
-            // Reconnect after 3 seconds
-            setTimeout(setupSSEListener, 3000);
+        req.on('error', () => {
+            setTimeout(() => setupSSEListener(port), 4000);
         });
     } catch (e) {
-        setTimeout(setupSSEListener, 3000);
+        setTimeout(() => setupSSEListener(port), 4000);
     }
 }
 
@@ -124,8 +124,8 @@ function showNativeNotification(msg) {
     let body = msg.subject || '(No Subject)';
 
     if (msg.extracted_otp) {
-        title = `🔑 OTP Verification Code: ${msg.extracted_otp}`;
-        body = `From: ${msg.from_address}\nSubject: ${msg.subject || ''}`;
+        title = `🔑 OTP Code: ${msg.extracted_otp}`;
+        body = `From: ${msg.from_address} | ${msg.subject || ''}`;
     }
 
     const notification = new Notification({
@@ -144,21 +144,17 @@ function showNativeNotification(msg) {
     notification.show();
 }
 
-// 3. Create Main Window
+// 4. Create Desktop Window
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 1280,
-        height: 820,
-        minWidth: 900,
-        minHeight: 600,
+        width: 1300,
+        height: 840,
+        minWidth: 960,
+        minHeight: 620,
         backgroundColor: '#000000',
         title: 'AgentBox Mail',
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-            color: '#000000',
-            symbolColor: '#ffffff',
-            height: 38,
-        },
+        show: false, // Show gracefully once ready
+        autoHideMenuBar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
@@ -166,7 +162,24 @@ function createWindow() {
         },
     });
 
-    mainWindow.loadURL(`http://localhost:${activePort}`);
+    // Show window as soon as DOM is ready
+    mainWindow.once('ready-to-show', () => {
+        mainWindow.show();
+        mainWindow.focus();
+    });
+
+    // Start loading backend
+    startBackendEngine().then((port) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.loadURL(`http://127.0.0.1:${port}`).catch(() => {
+                // Fallback to local ui if network issue
+                const uiIndex = path.join(__dirname, '..', 'ui', 'index.html');
+                if (fs.existsSync(uiIndex)) {
+                    mainWindow.loadFile(uiIndex);
+                }
+            });
+        }
+    });
 
     // Minimize to tray on close
     mainWindow.on('close', (event) => {
@@ -176,14 +189,14 @@ function createWindow() {
             if (Notification.isSupported()) {
                 new Notification({
                     title: 'AgentBox Mail',
-                    body: 'AgentBox is running in the background listening for emails and OTPs.',
+                    body: 'AgentBox is running in the background listening for emails and AI tasks.',
                 }).show();
             }
         }
     });
 }
 
-// 4. System Tray Integration
+// 5. System Tray Integration
 function createTray() {
     const icon = nativeImage.createFromBuffer(
         Buffer.from(
@@ -193,11 +206,11 @@ function createTray() {
     );
 
     tray = new Tray(icon);
-    tray.setToolTip('AgentBox Mail — 24/7 Autonomous Mailbox');
+    tray.setToolTip('AgentBox Mail — Autonomous AI Mailbox');
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: '⚡ Open AgentBox Dashboard',
+            label: '⚡ Open AgentBox Mail',
             click: () => {
                 if (mainWindow) {
                     mainWindow.show();
@@ -206,12 +219,12 @@ function createTray() {
             },
         },
         {
-            label: '⚙️ Mailbox Setup Wizard',
+            label: '🤖 Connect AI Agents',
             click: () => {
                 if (mainWindow) {
                     mainWindow.show();
                     mainWindow.focus();
-                    mainWindow.webContents.executeJavaScript('openSetupWizard();');
+                    mainWindow.webContents.executeJavaScript('openConnectAgentsModal();');
                 }
             },
         },
@@ -237,7 +250,7 @@ function createTray() {
     });
 }
 
-// 5. IPC Handlers
+// IPC Handlers
 ipcMain.on('window-minimize', () => {
     if (mainWindow) mainWindow.minimize();
 });
@@ -255,8 +268,7 @@ ipcMain.on('window-close', () => {
 });
 
 // App Lifecycle
-app.whenReady().then(async () => {
-    await ensureBackendEngine();
+app.whenReady().then(() => {
     createWindow();
     createTray();
 
