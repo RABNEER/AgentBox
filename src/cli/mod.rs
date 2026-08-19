@@ -36,8 +36,11 @@ pub struct AgentArgs {
 pub enum AgentSubcommands {
     /// Create a first-class Agent Identity
     Create {
-        /// Agent name (e.g. 'coder', 'browser-qa')
+        /// Agent name (e.g. 'coder', 'researcher', 'support-bot')
         name: String,
+        /// Optional custom email address (e.g. 'support@mycompany.com')
+        #[arg(short, long)]
+        email: Option<String>,
         /// Scoped capabilities (comma-separated, e.g. 'otp.read,links.read,inbox.read')
         #[arg(short, long)]
         capabilities: Option<String>,

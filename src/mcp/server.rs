@@ -293,13 +293,17 @@ impl McpServer {
                     // =========================================================
                     json!({
                         "name": "create_agent_identity",
-                        "description": "Creates a first-class persistent Agent Identity with scoped capabilities, email address, and returns a one-time secret auth token.",
+                        "description": "Provisions a new first-class Agent Identity with scoped capabilities and returns a one-time auth token.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "name": {
                                     "type": "string",
-                                    "description": "Agent name or worker identity (e.g. 'coder', 'browser-qa', 'reviewer')"
+                                    "description": "Agent name or worker identity (e.g. 'coder', 'browser-qa', 'researcher', 'support-bot')"
+                                },
+                                "email": {
+                                    "type": "string",
+                                    "description": "Optional custom email address for this agent (e.g. 'researcher@mycompany.com'). If omitted, generates a unique address on your domain."
                                 },
                                 "capabilities": {
                                     "type": "array",
@@ -870,6 +874,7 @@ impl McpServer {
                     .get("name")
                     .and_then(|n| n.as_str())
                     .ok_or("Missing agent 'name'")?;
+                let custom_email = args.get("email").and_then(|e| e.as_str());
                 let custom_caps = args.get("capabilities").and_then(|c| c.as_array());
 
                 let caps: Vec<String> = if let Some(arr) = custom_caps {
@@ -883,13 +888,18 @@ impl McpServer {
                         .collect()
                 };
 
-                let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
-                let email = format!(
-                    "{}-{}@{}",
-                    name_arg.to_lowercase().replace(' ', "-"),
-                    rand_slug,
-                    self.domain
-                );
+                let email = if let Some(custom) = custom_email {
+                    custom.to_string()
+                } else {
+                    let rand_slug =
+                        uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
+                    format!(
+                        "{}-{}@{}",
+                        name_arg.to_lowercase().replace(' ', "-"),
+                        rand_slug,
+                        self.domain
+                    )
+                };
 
                 let credential = self
                     .db

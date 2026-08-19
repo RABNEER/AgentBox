@@ -48,21 +48,25 @@ impl fmt::Display for TaskStatus {
     }
 }
 
-#[allow(dead_code)]
-impl TaskStatus {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for TaskStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "received" => Some(TaskStatus::Received),
-            "claimed" => Some(TaskStatus::Claimed),
-            "running" => Some(TaskStatus::Running),
-            "testing" => Some(TaskStatus::Testing),
-            "pr_opened" | "propened" => Some(TaskStatus::PrOpened),
-            "completed" => Some(TaskStatus::Completed),
-            "failed" => Some(TaskStatus::Failed),
-            _ => None,
+            "received" => Ok(TaskStatus::Received),
+            "claimed" => Ok(TaskStatus::Claimed),
+            "running" => Ok(TaskStatus::Running),
+            "testing" => Ok(TaskStatus::Testing),
+            "pr_opened" | "propened" => Ok(TaskStatus::PrOpened),
+            "completed" => Ok(TaskStatus::Completed),
+            "failed" => Ok(TaskStatus::Failed),
+            _ => Err(()),
         }
     }
+}
 
+#[allow(dead_code)]
+impl TaskStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(self, TaskStatus::Completed | TaskStatus::Failed)
     }
@@ -88,13 +92,15 @@ impl fmt::Display for TaskPriority {
     }
 }
 
-impl TaskPriority {
-    pub fn from_str(s: &str) -> Self {
+impl std::str::FromStr for TaskPriority {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "low" => TaskPriority::Low,
-            "high" => TaskPriority::High,
-            "urgent" | "critical" => TaskPriority::Urgent,
-            _ => TaskPriority::Normal,
+            "low" => Ok(TaskPriority::Low),
+            "high" => Ok(TaskPriority::High),
+            "urgent" | "critical" => Ok(TaskPriority::Urgent),
+            _ => Ok(TaskPriority::Normal),
         }
     }
 }
@@ -122,6 +128,7 @@ pub struct AgentTask {
 }
 
 impl AgentTask {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         source_agent_id: &str,
         target_agent_id: Option<&str>,
@@ -309,14 +316,9 @@ impl TaskDetector {
                     || trimmed.starts_with("File:")
                     || trimmed.starts_with("Trace:")
                 {
-                    evidence.push(
-                        trimmed
-                            .splitn(2, ':')
-                            .nth(1)
-                            .unwrap_or("")
-                            .trim()
-                            .to_string(),
-                    );
+                    if let Some((_, val)) = trimmed.split_once(':') {
+                        evidence.push(val.trim().to_string());
+                    }
                 } else if trimmed.starts_with("Expected:")
                     || trimmed.starts_with("Acceptance Criteria:")
                     || trimmed.starts_with("- [ ]")

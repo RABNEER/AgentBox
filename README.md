@@ -2,7 +2,7 @@
 
 # ⚡ AgentBox
 
-### *The Sovereign Autonomous Communication & Task Orchestration Layer for AI Agents*
+### *The Email & Identity Layer for AI Agents*
 
 [![CI](https://github.com/RABNEER/AgentBox/actions/workflows/ci.yml/badge.svg)](https://github.com/RABNEER/AgentBox/actions)
 [![npm version](https://img.shields.io/npm/v/agentbox-mail.svg?style=for-the-badge&color=000000&labelColor=18181b)](https://www.npmjs.com/package/agentbox-mail)
@@ -14,11 +14,11 @@
 
 <br/>
 
-**AgentBox** is the sovereign control plane and work protocol for autonomous AI agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**). It provides machine-native email identities, automatic email-to-task routing, object-level authorization, sub-millisecond event dispatch, and immutable audit trails — enabling one AI agent to delegate work to another agent without human intervention or third-party cloud lock-in.
+**AgentBox** gives any autonomous AI agent (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**) its own machine-native email identity, inbox, outbound communication, authentication, and event-driven email capabilities — self-hosted, sovereign, and blazingly fast.
 
 <br/>
 
-[Quick Start](#-quick-start) • [Task Protocol](#-agent-task-protocol--autonomous-delegation) • [Agent Identity & Security](#-first-class-agent-identity--object-level-security) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Architecture](#-architecture)
+[Quick Start](#-quick-start) • [Core Abstraction](#-core-abstraction) • [Agent Identity & Security](#-agent-identity--security-model) • [Use Cases](#-versatile-use-cases) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Architecture](#-architecture)
 
 ---
 
@@ -26,79 +26,60 @@
 
 <br/>
 
-## 💡 Why AgentBox?
+## 💡 The Core Problem
 
-Autonomous AI coding agents need two fundamental capabilities to operate independently:
-1. **Machine Identity & Authentication**: The ability to receive 2FA/OTPs and verify magic links on developer platforms without humans.
-2. **Inter-Agent Work Delegation**: The ability for a QA agent (e.g. Jules) to discover a bug, send an email, and have AgentBox automatically parse it into a structured work order, route it to a Coding Agent, track repository progress, and verify the resulting Pull Request.
+Autonomous AI agents need a way to interact with the human world and each other. Today, email is the universal communication protocol across all software and platforms:
 
-| Problem with Traditional Approaches | The AgentBox Sovereign Solution |
-|---|---|
-| ❌ Agents work in isolation with no structured way to delegate tasks | ✅ **Agent Task Protocol**: Automatic email-to-task parsing, atomic claiming & immutable audit lineage |
-| ❌ Polling REST APIs burns tokens and introduces 5–30s latency | ✅ **Sub-Millisecond Tokio Event Bus (<0.001ms)** with live SSE IPC bridge for standalone MCP |
-| ❌ Cross-agent data leaks and unauthorized actions | ✅ **Multi-Tier Security**: Scoped Capability Matrix + Object-Level Mailbox Ownership |
-| ❌ Complex cloud infrastructure requiring Webhooks/Ngrok | ✅ **Self-Hosted Rust Daemon**: Embedded SQLite (`agentbox.db`), Raw SMTP & IMAP TLS |
-| ❌ Manual MCP setup requiring JSON edits in IDE configs | ✅ **`npx agentbox-mail init`**: 1-click auto-configures Claude Code, Cursor & Antigravity |
+* How does a browser agent verify its account on GitHub or AWS? **Email.**
+* How does a customer contact your AI support assistant? **Email.**
+* How does an external QA agent delegate a bug report to a coding agent? **Email.**
+* How does a research agent receive arXiv digests and industry alerts? **Email.**
 
-<br/>
+Without machine-native email infrastructure, developers are forced to use brittle API polling, hack personal Gmail inboxes, or manually click verification links.
 
----
-
-## 📋 Agent Task Protocol & Autonomous Delegation
-
-AgentBox bridges universal email transport with stateful agent work orders. An incoming email from an external agent (Jules, GitHub, Sentry) automatically converts into an `AgentTask`:
+### **AgentBox solves this entirely.**
 
 ```
-   Jules (QA Agent)
-          │
-          │ 1. Inbounds Email via SMTP / IMAP / Webhook
-          │    Subject: "[TASK:BUG] Fix duplicate property filter in EstateFlow"
-          │    Body: "Repository: RABNEER/EstateFlow\nPriority: high\nEvidence: tests/search.spec.ts:87"
-          ▼
- ┌─────────────────┐
- │    AgentBox     │ ──► Auto-detects Work Order via `TaskDetector`
- └────────┬────────┘ ──► Inserts `AgentTask` (status: "received", priority: "high")
-          │
-          │ 2. Realtime Event Bus Dispatch (<0.001ms) / SSE Daemon Bridge
-          ▼
- Coder (Worker Agent / Claude Code)
-          │ 3. Wakes up instantaneously & claims task via `claim_agent_task`
-          │ 4. Clones repo, fixes SQL JOIN, runs tests
-          │ 5. Opens GitHub PR & calls `update_task_progress` (status: "pr_opened", commit: "a91f4b")
-          │ 6. Calls `complete_agent_task` (pr_url, test_results: "143 passed, 0 failed")
-          ▼
- ┌─────────────────┐
- │    AgentBox     │ ──► Status: "completed" + Immutable Audit Lineage
- └────────┬────────┘
-          │ 7. Emits completion notification to Jules / User
-          ▼
-   Jules closes ticket
-```
-
-### 🔍 Immutable Task Audit Lineage
-
-Every state transition, git commit hash, PR link, and test output is permanently recorded in SQLite (`task_audit_logs`):
-
-```json
-[
-  { "event_type": "task.created_from_email", "agent_id": "jules@external.ai", "created_at": 1771485600 },
-  { "event_type": "task.claimed", "agent_id": "agent_coder_7f92", "created_at": 1771485601 },
-  { "event_type": "task.pr_opened", "details": { "commit_sha": "a91f4b23", "pr_url": "https://github.com/RABNEER/EstateFlow/pull/42" } },
-  { "event_type": "task.completed", "details": { "summary": "Fixed duplicate listings. 143 tests passed." } }
-]
+                    ┌─────────────────────────┐
+                    │        AGENTBOX         │
+                    └────────────┬────────────┘
+                                 │
+              ┌──────────────────┴──────────────────┐
+              ▼                                     ▼
+        🧑🚀 IDENTITY                         📬 COMMUNICATION
+  • User-Defined Name & Email           • Inbound Inbox (SMTP/IMAP/HTTP)
+  • Persistent Agent ID                 • Outbound SMTP Relay
+  • Scoped Capability Matrix            • Realtime Event Bus (<0.001ms)
+  • Object-Level Ownership              • OTP Isolator & SafeLink Engine
+              │                                     │
+              └──────────────────┬──────────────────┘
+                                 │
+                                 ▼
+                     Autonomous AI Agent
 ```
 
 <br/>
 
 ---
 
-## 🧑‍🚀 First-Class Agent Identity & Object-Level Security
+## 🧑‍🚀 Agent Identity & Security Model
 
-AgentBox provisions persistent identities with fine-grained capability scopes and object-level resource isolation:
+AgentBox does not prescribe who your agent is. **You define the agent's name, email, and capability policy:**
 
 ```bash
-# Provision a scoped identity for an autonomous coding agent
-npx agentbox-mail agent create coder --capabilities "task.claim,task.update,inbox.read,otp.read"
+# 1. Create a Support Agent with a custom company email
+npx agentbox-mail agent create support \
+  --email support@mycompany.com \
+  --capabilities "inbox.read,email.send"
+
+# 2. Create an Autonomous Coding Agent
+npx agentbox-mail agent create coder \
+  --email coder@mycompany.com \
+  --capabilities "inbox.read,task.claim,task.update,otp.read"
+
+# 3. Create a Browser QA Agent with standard verification permissions
+npx agentbox-mail agent create browser-qa \
+  --capabilities "inbox.read,otp.read,links.read"
 ```
 
 ```
@@ -107,19 +88,89 @@ npx agentbox-mail agent create coder --capabilities "task.claim,task.update,inbo
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Agent ID     : agent_coder_7f92a1                               ║
 ║  Name         : coder                                            ║
-║  Email        : coder-7f92a1@apocalypto.in                       ║
+║  Email        : coder@mycompany.com                              ║
 ║  Auth Token   : agb_92d7e8f1c3a04b12                             ║
-║  Capabilities : ["task.claim", "task.update", "inbox.read"]      ║
+║  Capabilities : ["inbox.read", "task.claim", "otp.read"]        ║
 ║  Status       : active                                           ║
 ╚══════════════════════════════════════════════════════════════════╝
-⚠️  NOTE: Store this auth_token securely. It is only displayed once upon creation and cannot be retrieved again.
+⚠️  NOTE: Store this auth_token securely. It is only displayed once upon creation.
 ```
 
 ### 🔐 Multi-Tier Security Enforcement:
 1. **Token Authentication**: Verifies agent identity and status (`active` vs `revoked`).
-2. **Capability Check**: Validates required scope (`task.dispatch`, `task.claim`, `otp.read`, `email.send`).
-3. **Object-Level Resource Ownership**: Agent A possessing `otp.read` is strictly restricted to its own assigned mailboxes (`owner_agent_id`). Attempting cross-agent access returns a structured `AccessDenied` error.
+2. **Capability Scopes**: Validates required permissions (`inbox.read`, `email.send`, `otp.read`, `task.claim`).
+3. **Object-Level Mailbox Ownership**: Agent A possessing `otp.read` is strictly restricted to its own assigned mailboxes (`owner_agent_id`). Attempting cross-agent access returns an explicit `AccessDenied` error.
 4. **Credential Hygiene**: Public queries (`get_agent_identity`, `list_agent_identities`) use sanitized structs that never expose tokens.
+
+<br/>
+
+---
+
+## 🌐 Versatile Use Cases
+
+AgentBox provides the foundational email identity layer. Here are some of the most powerful workflows built on top of it:
+
+### 1. 🤖 Agent-to-Agent Work Delegation & Task Protocols
+An external QA or discovery agent (like Jules) sends an email with a bug or feature request. AgentBox's built-in `TaskDetector` automatically parses the subject (`[TASK:BUG]`), extracts the repository, branch, priority, and line citations, provisions an `AgentTask`, and wakes the Coding Agent via the event bus:
+
+```
+   Jules (QA Agent)
+          │
+          │ 1. Sends email: "[TASK:BUG] Fix duplicate property filter in EstateFlow"
+          │    Body: "Repository: RABNEER/EstateFlow\nPriority: high\nEvidence: tests/search.spec.ts:87"
+          ▼
+ ┌─────────────────┐
+ │    AgentBox     │ ──► Auto-detects Work Order via `TaskDetector`
+ └────────┬────────┘ ──► Provisions `AgentTask` & records audit event
+          │
+          │ 2. Realtime Event Bus Dispatch (<0.001ms) / SSE Daemon Bridge
+          ▼
+ Coder (Worker Agent / Claude Code)
+          │ 3. Instantaneously claims task via `claim_agent_task`
+          │ 4. Fixes code, opens GitHub PR, calls `update_task_progress`
+          │ 5. Calls `complete_agent_task` with CI results
+          ▼
+ ┌─────────────────┐
+ │    AgentBox     │ ──► Status: "completed" + Immutable Audit Lineage
+ └────────┬────────┘
+          │ 6. Emits completion notification to Jules / User
+          ▼
+   Jules closes ticket
+```
+
+---
+
+### 2. 🔐 Autonomous SaaS Signups & 2FA / OTP Verification
+Browser agents (Puppeteer, Playwright, Stagehand) need to sign up for tools, verify email addresses, and solve OTP challenges:
+* Agent creates inbox `create_agent_inbox(name: "signup-bot")`.
+* Triggers signup on platform (e.g. AWS, Stripe, Vercel).
+* Calls `get_latest_otp()` (extracted via regex in **<0.14ms**) or `get_verification_link()` (checked with **Anti-Redirect & Phishing Defense**).
+* Account is verified autonomously with zero human intervention.
+
+---
+
+### 3. 💬 Autonomous Inbound Support & Customer Triage
+Give your customer support agent its own email address (`support@yourcompany.com`):
+* Customer emails support with an issue.
+* AgentBox ingests the email via raw SMTP or IMAP sync.
+* Realtime SSE event notifies the support agent.
+* Agent analyzes the inquiry, consults internal docs, and replies via `send_agent_email()`.
+
+---
+
+### 4. 🔬 Research & Intelligence Gathering
+Give your research agent an identity (`researcher@yourcompany.com`):
+* Subscribes to industry newsletters, security advisories (CVEs), and arXiv digest feeds.
+* Agent reads inbound emails periodically using `read_agent_inbox()`.
+* Synthesizes executive briefings, summarizes findings, and forwards digests to your team.
+
+---
+
+### 5. 🛡️ DevOps Alerting & Automated Incident Response
+Give your incident response agent an identity (`oncall@yourcompany.com`):
+* Receives critical error alerts from Datadog, Sentry, or PagerDuty.
+* Realtime event hook wakes the agent immediately.
+* Agent queries logs, identifies the failing commit, and dispatches a fix order to the coding agent.
 
 <br/>
 
@@ -159,13 +210,7 @@ AgentBox implements the **Model Context Protocol (MCP)** specification over `std
 
 | Category | Tool | Parameters | Description |
 |---|---|---|---|
-| **Task Protocol** | **`dispatch_agent_task`** | `action, description, repository?, branch?, priority?, target_agent?, evidence?, acceptance_criteria?, agent_token?` | Dispatches a structured work order from one agent to another. |
-| **Task Protocol** | **`claim_agent_task`** | `task_id, agent_token` | Atomically locks and assigns a task to the claiming worker agent. |
-| **Task Protocol** | **`update_task_progress`** | `task_id, status, commit_sha?, pr_url?, test_results?, note?, agent_token` | Updates task status (`running`, `testing`, `pr_opened`) and records audit log. |
-| **Task Protocol** | **`complete_agent_task`** | `task_id, summary, commit_sha?, pr_url?, test_results?, agent_token` | Closes a task with completion details and emits completion event. |
-| **Task Protocol** | **`list_agent_tasks`** | `status?, agent_token?, limit?` | Lists tasks filtered by lifecycle state or agent identity. |
-| **Task Protocol** | **`get_task_audit_trail`** | `task_id, agent_token?` | Retrieves the immutable audit log and lifecycle history for a task. |
-| **Identity** | **`create_agent_identity`** | `name, capabilities?` | Creates a persistent identity and returns a one-time secret auth token. |
+| **Identity** | **`create_agent_identity`** | `name, email?, capabilities?` | Creates a persistent identity with custom/auto email and returns a one-time auth token. |
 | **Identity** | **`get_agent_identity`** | `agent_id` | Retrieves public agent metadata (tokens are sanitized). |
 | **Identity** | **`list_agent_identities`** | — | Lists all registered public agent identities and active policies. |
 | **Identity** | **`revoke_agent_identity`** | `agent_id` | Revokes an agent identity and invalidates its auth token immediately. |
@@ -176,6 +221,12 @@ AgentBox implements the **Model Context Protocol (MCP)** specification over `std
 | **Mailbox** | **`read_agent_inbox`** | `account_id, limit?, agent_token?` | Retrieves recent messages, full body text, HTML, and sender metadata. |
 | **Mailbox** | **`send_agent_email`** | `account_id, to, subject, body, agent_token?` | Dispatches outbound emails via SMTP relay with capability authorization. |
 | **Mailbox** | **`delete_agent_inbox`** | `account_id, agent_token?` | Deletes a temporary mailbox and purges stored messages. |
+| **Task Protocol** | **`dispatch_agent_task`** | `action, description, repository?, branch?, priority?, target_agent?, evidence?, acceptance_criteria?, agent_token?` | Dispatches a structured work order from one agent to another. |
+| **Task Protocol** | **`claim_agent_task`** | `task_id, agent_token` | Atomically locks and assigns a task to the claiming worker agent. |
+| **Task Protocol** | **`update_task_progress`** | `task_id, status, commit_sha?, pr_url?, test_results?, note?, agent_token` | Updates task status (`running`, `testing`, `pr_opened`) and records audit log. |
+| **Task Protocol** | **`complete_agent_task`** | `task_id, summary, commit_sha?, pr_url?, test_results?, agent_token` | Closes a task with completion details and emits completion event. |
+| **Task Protocol** | **`list_agent_tasks`** | `status?, agent_token?, limit?` | Lists tasks filtered by lifecycle state or agent identity. |
+| **Task Protocol** | **`get_task_audit_trail`** | `task_id, agent_token?` | Retrieves the immutable audit log and lifecycle history for a task. |
 
 <br/>
 
@@ -195,7 +246,7 @@ npx agentbox-mail init
 npx agentbox-mail mcp
 
 # Create an Agent Identity with scoped capabilities
-npx agentbox-mail agent create coder --capabilities "task.claim,task.update,inbox.read,otp.read"
+npx agentbox-mail agent create support --email support@mycompany.com --capabilities "inbox.read,email.send"
 
 # Retrieve latest OTP code
 npx agentbox-mail otp agent@yourdomain.com
@@ -238,7 +289,7 @@ cargo build --release
 
 ```
                                   ┌───────────────────────────┐
-                                  │   Incoming Mail & Tasks   │
+                                  │   Inbound Emails & Tasks  │
                                   └─────────────┬─────────────┘
                                                 │
                  ┌──────────────────────────────┼──────────────────────────────┐
@@ -254,19 +305,19 @@ cargo build --release
                                                 ▼
                                  ┌─────────────────────────────┐
                                  │   High-Speed Parser Engine  │
-                                 │  • TaskDetector (Work Order)│
                                  │  • 4–8 Digit OTP Isolator   │
                                  │  • Link Safety Engine       │
+                                 │  • TaskDetector (Work Order)│
                                  └──────────────┬──────────────┘
                                                 │
                                                 ▼
                                  ┌─────────────────────────────┐
                                  │ Embedded SQLite Storage     │
                                  │       (`agentbox.db`)       │
-                                 │  • Accounts  • Identities   │
-                                 │  • Messages  • Tasks        │
+                                 │  • Identities & Auth Tokens │
+                                 │  • Mailboxes & Messages     │
                                  │  • Resource Ownership Graph │
-                                 │  • Task Audit Logs          │
+                                 │  • Agent Tasks & Audit Logs │
                                  └──────────────┬──────────────┘
                                                 │
                  ┌──────────────────────────────┼──────────────────────────────┐
@@ -274,7 +325,7 @@ cargo build --release
                  ▼                              ▼                              ▼
      ┌───────────────────────┐      ┌───────────────────────┐      ┌───────────────────────┐
      │ Realtime SSE Bus      │      │ MCP Server (stdio)    │      │ Native Desktop App /  │
-     │ (`GET /v1/events`)    │      │ Task Protocol & State │      │ Web Dashboard (:3000) │
+     │ (`GET /v1/events`)    │      │ Full Tool Interface   │      │ Web Dashboard (:3000) │
      │ (Live Daemon Bridge)  │      │ Object-Level Auth     │      │                       │
      └───────────────────────┘      └───────────────────────┘      └───────────────────────┘
 ```

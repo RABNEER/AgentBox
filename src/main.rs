@@ -305,18 +305,23 @@ async fn run_agent(args: AgentArgs) -> Result<(), Box<dyn std::error::Error + Se
     match args.action {
         AgentSubcommands::Create {
             name,
+            email,
             capabilities,
             db,
         } => {
             let db_inst = Database::init(&db).await?;
             let domain = std::env::var("DOMAIN").unwrap_or_else(|_| "apocalypto.in".to_string());
-            let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
-            let email = format!(
-                "{}-{}@{}",
-                name.to_lowercase().replace(' ', "-"),
-                rand_slug,
-                domain
-            );
+            let agent_email = if let Some(custom) = email {
+                custom
+            } else {
+                let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
+                format!(
+                    "{}-{}@{}",
+                    name.to_lowercase().replace(' ', "-"),
+                    rand_slug,
+                    domain
+                )
+            };
 
             let caps: Vec<String> = if let Some(caps_str) = capabilities {
                 caps_str.split(',').map(|s| s.trim().to_string()).collect()
@@ -328,7 +333,9 @@ async fn run_agent(args: AgentArgs) -> Result<(), Box<dyn std::error::Error + Se
                 ]
             };
 
-            let creds = db_inst.create_agent_identity(&name, &email, &caps).await?;
+            let creds = db_inst
+                .create_agent_identity(&name, &agent_email, &caps)
+                .await?;
 
             println!("\n╔══════════════════════════════════════════════════════════════════╗");
             println!("║             🧑‍🚀 AGENT IDENTITY PROVISIONED                      ║");
