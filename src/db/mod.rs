@@ -543,6 +543,7 @@ impl Database {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_task_progress(
         &self,
         task_id: &str,

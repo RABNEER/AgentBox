@@ -666,7 +666,7 @@ impl McpServer {
                     .get("priority")
                     .and_then(|p| p.as_str())
                     .unwrap_or("normal");
-                let priority = TaskPriority::from_str(priority_str);
+                let priority = TaskPriority::from(priority_str);
                 let target_agent = args.get("target_agent").and_then(|t| t.as_str());
 
                 let evidence: Option<Vec<String>> =

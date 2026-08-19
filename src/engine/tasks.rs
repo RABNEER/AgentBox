@@ -92,16 +92,28 @@ impl fmt::Display for TaskPriority {
     }
 }
 
+impl From<&str> for TaskPriority {
+    fn from(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "low" => TaskPriority::Low,
+            "high" => TaskPriority::High,
+            "urgent" | "critical" => TaskPriority::Urgent,
+            _ => TaskPriority::Normal,
+        }
+    }
+}
+
+impl From<String> for TaskPriority {
+    fn from(s: String) -> Self {
+        TaskPriority::from(s.as_str())
+    }
+}
+
 impl std::str::FromStr for TaskPriority {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "low" => Ok(TaskPriority::Low),
-            "high" => Ok(TaskPriority::High),
-            "urgent" | "critical" => Ok(TaskPriority::Urgent),
-            _ => Ok(TaskPriority::Normal),
-        }
+        Ok(TaskPriority::from(s))
     }
 }
 
@@ -222,7 +234,7 @@ impl TaskDetector {
                         .unwrap_or("general_task");
                     let repo = val.get("repository").and_then(|r| r.as_str());
                     let branch = val.get("branch").and_then(|b| b.as_str());
-                    let priority = TaskPriority::from_str(
+                    let priority = TaskPriority::from(
                         val.get("priority")
                             .and_then(|p| p.as_str())
                             .unwrap_or("normal"),
@@ -297,7 +309,7 @@ impl TaskDetector {
             // Extract Priority
             let priority =
                 if let Some(cap) = PRIORITY_PATTERN.captures(body_str).and_then(|c| c.get(1)) {
-                    TaskPriority::from_str(cap.as_str())
+                    TaskPriority::from(cap.as_str())
                 } else if subject_str.to_uppercase().contains("URGENT")
                     || subject_str.to_uppercase().contains("HIGH")
                 {
