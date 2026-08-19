@@ -1,6 +1,6 @@
 {
   "name": "agentbox-mail",
-  "version": "1.0.0",
+  "version": "2.0.1",
   "description": "Autonomous AI Mailbox & Instant 2ms OTP Engine for AI Agents (Claude Code, Cursor, Antigravity)",
   "main": "electron/main.js",
   "bin": {
