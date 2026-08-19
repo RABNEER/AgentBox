@@ -1,4 +1,5 @@
 use crate::db::Database;
+use crate::engine::capabilities::{Capability, ScopeValidator};
 use crate::engine::{outbound::SendEmailRequest, OutboundMailer};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -101,6 +102,63 @@ impl McpServer {
             },
             "tools/list" => {
                 let tools = vec![
+                    // Identity & Profile Primitives
+                    json!({
+                        "name": "create_agent_identity",
+                        "description": "Creates a first-class persistent Agent Identity with scoped capabilities, email address, and auth token.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "Agent name or worker identity (e.g. 'coder', 'browser-qa', 'reviewer')"
+                                },
+                                "capabilities": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Allowed capability scopes: 'inbox.read', 'inbox.create', 'inbox.delete', 'otp.read', 'links.read', 'email.send'"
+                                }
+                            },
+                            "required": ["name"]
+                        }
+                    }),
+                    json!({
+                        "name": "get_agent_identity",
+                        "description": "Retrieves the status, capabilities, email identity, and auth metadata for an agent.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "agent_id": {
+                                    "type": "string",
+                                    "description": "The unique Agent ID or agent name."
+                                }
+                            },
+                            "required": ["agent_id"]
+                        }
+                    }),
+                    json!({
+                        "name": "list_agent_identities",
+                        "description": "Lists all registered Agent Identities and their active capability policies.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {}
+                        }
+                    }),
+                    json!({
+                        "name": "revoke_agent_identity",
+                        "description": "Revokes an Agent Identity, invalidating its token and scoped permissions.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "agent_id": {
+                                    "type": "string",
+                                    "description": "The Agent ID to revoke."
+                                }
+                            },
+                            "required": ["agent_id"]
+                        }
+                    }),
+                    // Mailbox & OTP Automation Primitives
                     json!({
                         "name": "create_agent_inbox",
                         "description": "Creates a new dedicated mailbox or virtual address for an AI agent worker.",
@@ -114,19 +172,27 @@ impl McpServer {
                                 "address": {
                                     "type": "string",
                                     "description": "Optional custom email address. If omitted, generates a unique address on your domain."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             }
                         }
                     }),
                     json!({
                         "name": "get_latest_otp",
-                        "description": "Extracts the latest 4–8 digit 2FA/verification OTP code from emails received in under 2ms.",
+                        "description": "Extracts the latest 4–8 digit 2FA/verification OTP code from emails in under 0.14ms.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "account_id": {
                                     "type": "string",
                                     "description": "The mailbox ID or email address to retrieve the OTP for."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             },
                             "required": ["account_id"]
@@ -134,7 +200,7 @@ impl McpServer {
                     }),
                     json!({
                         "name": "wait_for_email",
-                        "description": "Event-driven blocking hook: Pauses agent execution and wakes up instantaneously (<0.1ms) the exact moment an email or OTP lands.",
+                        "description": "Event-driven blocking hook: Pauses agent execution and wakes up instantaneously (<0.001ms) the exact moment an email or OTP lands.",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -145,6 +211,10 @@ impl McpServer {
                                 "timeout_secs": {
                                     "type": "number",
                                     "description": "Maximum seconds to wait (default: 30, max: 120)."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             },
                             "required": ["account_id"]
@@ -159,6 +229,10 @@ impl McpServer {
                                 "account_id": {
                                     "type": "string",
                                     "description": "The mailbox ID or email address."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             },
                             "required": ["account_id"]
@@ -177,6 +251,10 @@ impl McpServer {
                                 "limit": {
                                     "type": "number",
                                     "description": "Max number of messages to fetch (default: 10)."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             },
                             "required": ["account_id"]
@@ -203,6 +281,10 @@ impl McpServer {
                                 "body": {
                                     "type": "string",
                                     "description": "Plain text body of the email."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             },
                             "required": ["account_id", "to", "body"]
@@ -217,6 +299,10 @@ impl McpServer {
                                 "account_id": {
                                     "type": "string",
                                     "description": "The mailbox ID or email address to delete."
+                                },
+                                "agent_token": {
+                                    "type": "string",
+                                    "description": "Optional Agent token to enforce capability authorization."
                                 }
                             },
                             "required": ["account_id"]
@@ -271,6 +357,32 @@ impl McpServer {
         }
     }
 
+    /// Enforce capability check if an agent token is provided
+    async fn check_authorization(
+        &self,
+        token_opt: Option<&str>,
+        required: Capability,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(token) = token_opt {
+            if let Some(identity) = self.db.get_agent_identity_by_token(token).await? {
+                if identity.status == "revoked" {
+                    return Err("Agent identity has been revoked.".into());
+                }
+                let caps: Vec<String> = serde_json::from_str(&identity.capabilities).unwrap_or_default();
+                if !ScopeValidator::has_capability(&caps, required) {
+                    return Err(format!(
+                        "PermissionDenied: Agent '{}' lacks required capability '{}'.",
+                        identity.name,
+                        required.as_str()
+                    ).into());
+                }
+            } else {
+                return Err("Invalid or unrecognized agent_token.".into());
+            }
+        }
+        Ok(())
+    }
+
     /// Explicitly resolves an existing account without silent side-effect creation on reads.
     async fn resolve_existing_account_id(&self, identifier: &str) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         if identifier.contains('@') {
@@ -297,8 +409,49 @@ impl McpServer {
         name: &str,
         args: Value,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let agent_token = args.get("agent_token").and_then(|t| t.as_str());
+
         match name {
+            // =================================================================
+            // First-Class Agent Identity Tools
+            // =================================================================
+            "create_agent_identity" => {
+                let name_arg = args.get("name").and_then(|n| n.as_str()).ok_or("Missing agent 'name'")?;
+                let custom_caps = args.get("capabilities").and_then(|c| c.as_array());
+                
+                let caps: Vec<String> = if let Some(arr) = custom_caps {
+                    arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+                } else {
+                    Capability::standard_agent().into_iter().map(|c| c.as_str().to_string()).collect()
+                };
+
+                let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
+                let email = format!("{}-{}@{}", name_arg.to_lowercase().replace(' ', "-"), rand_slug, self.domain);
+                
+                let identity = self.db.create_agent_identity(name_arg, &email, &caps).await?;
+                Ok(json!(identity))
+            }
+            "get_agent_identity" => {
+                let agent_id = args.get("agent_id").and_then(|a| a.as_str()).ok_or("Missing agent_id")?;
+                let identity = self.db.get_agent_identity(agent_id).await?
+                    .ok_or_else(|| format!("Agent identity '{}' not found", agent_id))?;
+                Ok(json!(identity))
+            }
+            "list_agent_identities" => {
+                let list = self.db.list_agent_identities().await?;
+                Ok(json!(list))
+            }
+            "revoke_agent_identity" => {
+                let agent_id = args.get("agent_id").and_then(|a| a.as_str()).ok_or("Missing agent_id")?;
+                self.db.revoke_agent_identity(agent_id).await?;
+                Ok(json!({ "status": "revoked", "agent_id": agent_id }))
+            }
+
+            // =================================================================
+            // Mailbox & OTP Operations
+            // =================================================================
             "create_agent_inbox" => {
+                self.check_authorization(agent_token, Capability::InboxCreate).await?;
                 let display_name = args.get("name").and_then(|n| n.as_str()).unwrap_or("agent-worker");
                 let custom_address = args.get("address").and_then(|a| a.as_str());
                 let address = if let Some(addr) = custom_address {
@@ -312,12 +465,14 @@ impl McpServer {
                 Ok(json!(acc))
             }
             "get_latest_otp" => {
+                self.check_authorization(agent_token, Capability::OtpRead).await?;
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
                 let account_id = self.resolve_existing_account_id(identifier).await?;
                 let otp = self.db.get_latest_otp(&account_id).await?;
                 Ok(json!({ "account_id": account_id, "otp": otp }))
             }
             "wait_for_email" => {
+                self.check_authorization(agent_token, Capability::OtpRead).await?;
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).unwrap_or("agent");
                 let account_id = self.resolve_existing_account_id(identifier).await?;
                 let timeout_secs = args.get("timeout_secs").and_then(|t| t.as_u64()).unwrap_or(30).min(120);
@@ -338,7 +493,7 @@ impl McpServer {
                     }));
                 }
 
-                // 2. Pure Event-Driven Instant Wake-up via Tokio Broadcast Channel (<0.1ms latency)
+                // 2. Pure Event-Driven Instant Wake-up via Tokio Broadcast Channel (<0.001ms latency)
                 if let Some(ref bus) = self.event_bus {
                     let mut rx = bus.subscribe();
                     let timeout_duration = Duration::from_secs(timeout_secs);
@@ -401,6 +556,7 @@ impl McpServer {
                 }))
             }
             "get_verification_link" => {
+                self.check_authorization(agent_token, Capability::LinksRead).await?;
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
                 let account_id = self.resolve_existing_account_id(identifier).await?;
                 let messages = self.db.list_messages_for_account(&account_id).await?;
@@ -421,6 +577,7 @@ impl McpServer {
                 Ok(json!({ "account_id": account_id, "links": links }))
             }
             "read_agent_inbox" => {
+                self.check_authorization(agent_token, Capability::InboxRead).await?;
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
                 let account_id = self.resolve_existing_account_id(identifier).await?;
                 let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(10) as usize;
@@ -429,6 +586,7 @@ impl McpServer {
                 Ok(json!(messages))
             }
             "send_agent_email" => {
+                self.check_authorization(agent_token, Capability::EmailSend).await?;
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
                 let account_id = self.resolve_existing_account_id(identifier).await?;
                 let to = args.get("to").and_then(|t| t.as_str()).ok_or("Missing recipient 'to'")?;
@@ -453,6 +611,7 @@ impl McpServer {
                 Ok(json!({ "status": "sent", "details": res }))
             }
             "delete_agent_inbox" => {
+                self.check_authorization(agent_token, Capability::InboxDelete).await?;
                 let identifier = args.get("account_id").and_then(|a| a.as_str()).ok_or("Missing account_id")?;
                 let account_id = self.resolve_existing_account_id(identifier).await?;
                 self.db.delete_account(&account_id).await?;

@@ -5,7 +5,7 @@ mod engine;
 mod mcp;
 
 use clap::Parser;
-use cli::{Cli, Commands, CreateArgs, ListArgs, McpArgs, OtpArgs, ServerArgs};
+use cli::{AgentArgs, AgentSubcommands, Cli, Commands, CreateArgs, ListArgs, McpArgs, OtpArgs, ServerArgs};
 use db::Database;
 use engine::{ImapSyncWorker, OutboundMailer, SmtpServer};
 use std::sync::Arc;
@@ -61,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Commands::Create(args) => run_create(args).await,
         Commands::List(args) => run_list(args).await,
         Commands::Otp(args) => run_otp(args).await,
+        Commands::Agent(args) => run_agent(args).await,
     }
 }
 
@@ -227,5 +228,63 @@ async fn run_otp(args: OtpArgs) -> Result<(), Box<dyn std::error::Error + Send +
         }
     }
 
+    Ok(())
+}
+
+async fn run_agent(args: AgentArgs) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    match args.action {
+        AgentSubcommands::Create { name, capabilities, db } => {
+            let db_inst = Database::init(&db).await?;
+            let domain = std::env::var("DOMAIN").unwrap_or_else(|_| "apocalypto.in".to_string());
+            let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
+            let email = format!("{}-{}@{}", name.to_lowercase().replace(' ', "-"), rand_slug, domain);
+
+            let caps: Vec<String> = if let Some(caps_str) = capabilities {
+                caps_str.split(',').map(|s| s.trim().to_string()).collect()
+            } else {
+                vec!["inbox.read".to_string(), "otp.read".to_string(), "links.read".to_string()]
+            };
+
+            let identity = db_inst.create_agent_identity(&name, &email, &caps).await?;
+
+            println!("\n╔══════════════════════════════════════════════════════════════════╗");
+            println!("║             🧑‍🚀 AGENT IDENTITY PROVISIONED                      ║");
+            println!("╠══════════════════════════════════════════════════════════════════╣");
+            println!("║  Agent ID     : {:<48} ║", identity.id);
+            println!("║  Name         : {:<48} ║", identity.name);
+            println!("║  Email        : {:<48} ║", identity.email_address);
+            println!("║  Auth Token   : {:<48} ║", identity.token);
+            println!("║  Capabilities : {:<48} ║", identity.capabilities);
+            println!("║  Status       : {:<48} ║", identity.status);
+            println!("╚══════════════════════════════════════════════════════════════════╝\n");
+        }
+        AgentSubcommands::List { db } => {
+            let db_inst = Database::init(&db).await?;
+            let list = db_inst.list_agent_identities().await?;
+
+            if list.is_empty() {
+                println!("No registered Agent Identities found.");
+                return Ok(());
+            }
+
+            println!("\n{:<24} {:<16} {:<32} {:<10}", "AGENT ID", "NAME", "EMAIL IDENTITY", "STATUS");
+            println!("{:-<84}", "");
+            for agent in list {
+                println!(
+                    "{:<24} {:<16} {:<32} {:<10}",
+                    agent.id,
+                    agent.name,
+                    agent.email_address,
+                    agent.status
+                );
+            }
+            println!();
+        }
+        AgentSubcommands::Revoke { agent_id, db } => {
+            let db_inst = Database::init(&db).await?;
+            db_inst.revoke_agent_identity(&agent_id).await?;
+            println!("🔒 Revoked Agent Identity '{}'. Token and permissions invalidated.", agent_id);
+        }
+    }
     Ok(())
 }

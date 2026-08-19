@@ -45,6 +45,10 @@ switch (command) {
   case 'create':
     runCreate(args[1], args[2]);
     break;
+  case 'agent':
+  case 'identity':
+    runAgent(args.slice(1));
+    break;
   case 'help':
   default:
     printHelp();
@@ -223,21 +227,39 @@ function runCreate(name, address) {
   child.on('exit', (code) => process.exit(code || 0));
 }
 
+function runAgent(subArgs) {
+  const subCommand = subArgs[0] || 'list';
+  const bin = getBinaryPath();
+  if (!bin) {
+    console.error('❌ AgentBox binary not compiled. Please run "cargo build" first.');
+    process.exit(1);
+  }
+
+  const childArgs = ['agent', subCommand, ...subArgs.slice(1)];
+  const child = spawn(bin, childArgs, {
+    stdio: 'inherit',
+    cwd: ROOT_DIR,
+    env: process.env
+  });
+  child.on('exit', (code) => process.exit(code || 0));
+}
+
 function printHelp() {
   console.log(`
-⚡ AgentBox CLI — Autonomous AI Mailbox Engine (v1.0.0)
+⚡ AgentBox CLI — Sovereign Autonomous AI Mailbox & Identity Engine
 
 Usage:
   npx agentbox-mail <command> [options]
   agentbox <command> [options]
 
 Commands:
-  mcp             Start the stdio Model Context Protocol (MCP) server for AI agents
-  init, install   1-Click auto-configure MCP & Skill into Claude Code, Cursor, Antigravity
-  ui, start       Start the web dashboard & IMAP/SMTP engine at http://localhost:3000
-  otp [account]   Retrieve the latest OTP verification code
-  list            List all active agent mailboxes
-  create <name>   Create a new virtual agent mailbox
-  help            Show this help message
+  mcp                    Start the stdio Model Context Protocol (MCP) server for AI agents
+  init, install          1-Click auto-configure MCP & Skill into Claude Code, Cursor, Antigravity
+  ui, start              Start the web dashboard & IMAP/SMTP engine at http://localhost:3000
+  otp [account]          Retrieve the latest OTP verification code (<0.14ms)
+  agent create <name>    Create a first-class Agent Identity with scoped capabilities & token
+  list                   List all active agent mailboxes
+  create <name>          Create a new virtual agent mailbox
+  help                   Show this help message
 `);
 }

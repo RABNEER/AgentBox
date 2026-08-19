@@ -14,6 +14,18 @@ pub struct Account {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AgentIdentity {
+    pub id: String,
+    pub name: String,
+    pub email_address: String,
+    pub capabilities: String,
+    pub token: String,
+    pub status: String,
+    pub created_at: i64,
+    pub last_active_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Message {
     pub id: String,
     pub account_id: String,
@@ -64,6 +76,17 @@ impl Database {
                 created_at INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS agent_identities (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email_address TEXT UNIQUE NOT NULL,
+                capabilities TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at INTEGER NOT NULL,
+                last_active_at INTEGER NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS messages (
                 id TEXT PRIMARY KEY,
                 account_id TEXT NOT NULL,
@@ -93,6 +116,8 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account_id);
             CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_accounts_address ON accounts(address);
+            CREATE INDEX IF NOT EXISTS idx_agent_identities_token ON agent_identities(token);
+            CREATE INDEX IF NOT EXISTS idx_agent_identities_email ON agent_identities(email_address);
             "#,
         )
         .execute(&pool)
@@ -170,6 +195,93 @@ impl Database {
 
         Ok(())
     }
+
+    // =========================================================================
+    // Agent Identity Management
+    // =========================================================================
+
+    pub async fn create_agent_identity(
+        &self,
+        name: &str,
+        email_address: &str,
+        capabilities: &[String],
+    ) -> Result<AgentIdentity, sqlx::Error> {
+        let rand_slug = Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
+        let id = format!("agent_{}_{}", name.to_lowercase().replace(' ', "-"), rand_slug);
+        let token = format!("agb_{}", Uuid::new_v4().to_string().replace('-', ""));
+        let now = Utc::now().timestamp();
+        let caps_json = serde_json::to_string(capabilities).unwrap_or_else(|_| "[]".to_string());
+
+        // Also ensure a corresponding mailbox exists in accounts
+        let _ = self.create_account(email_address, Some(&format!("Agent Identity: {}", name))).await;
+
+        sqlx::query(
+            r#"
+            INSERT INTO agent_identities (id, name, email_address, capabilities, token, status, created_at, last_active_at)
+            VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
+            "#,
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(email_address)
+        .bind(&caps_json)
+        .bind(&token)
+        .bind(now)
+        .bind(now)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(AgentIdentity {
+            id,
+            name: name.to_string(),
+            email_address: email_address.to_string(),
+            capabilities: caps_json,
+            token,
+            status: "active".to_string(),
+            created_at: now,
+            last_active_at: now,
+        })
+    }
+
+    pub async fn get_agent_identity(&self, id: &str) -> Result<Option<AgentIdentity>, sqlx::Error> {
+        sqlx::query_as::<_, AgentIdentity>(
+            "SELECT id, name, email_address, capabilities, token, status, created_at, last_active_at FROM agent_identities WHERE id = ? OR name = ?",
+        )
+        .bind(id)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn get_agent_identity_by_token(&self, token: &str) -> Result<Option<AgentIdentity>, sqlx::Error> {
+        sqlx::query_as::<_, AgentIdentity>(
+            "SELECT id, name, email_address, capabilities, token, status, created_at, last_active_at FROM agent_identities WHERE token = ?",
+        )
+        .bind(token)
+        .fetch_optional(&self.pool)
+        .await
+    }
+
+    pub async fn list_agent_identities(&self) -> Result<Vec<AgentIdentity>, sqlx::Error> {
+        sqlx::query_as::<_, AgentIdentity>(
+            "SELECT id, name, email_address, capabilities, token, status, created_at, last_active_at FROM agent_identities ORDER BY created_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await
+    }
+
+    pub async fn revoke_agent_identity(&self, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE agent_identities SET status = 'revoked' WHERE id = ? OR name = ?")
+            .bind(id)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // =========================================================================
+    // Message Ingestion & Queries
+    // =========================================================================
 
     pub async fn insert_message(&self, msg: &Message) -> Result<(), sqlx::Error> {
         sqlx::query(

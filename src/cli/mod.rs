@@ -3,8 +3,8 @@ use clap::{Args, Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(name = "agentbox")]
 #[command(author = "AgentBox Team")]
-#[command(version = "0.1.0")]
-#[command(about = "High-performance autonomous AI Agent Mailbox & Automation Engine", long_about = None)]
+#[command(version = "1.0.0")]
+#[command(about = "Sovereign Autonomous AI Agent Mailbox & Identity Engine", long_about = None)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Commands>,
@@ -22,6 +22,43 @@ pub enum Commands {
     List(ListArgs),
     /// Fetch the latest extracted OTP verification code for an inbox
     Otp(OtpArgs),
+    /// Manage first-class Agent Identities and capability scopes
+    Agent(AgentArgs),
+}
+
+#[derive(Args, Debug)]
+pub struct AgentArgs {
+    #[command(subcommand)]
+    pub action: AgentSubcommands,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentSubcommands {
+    /// Create a first-class Agent Identity
+    Create {
+        /// Agent name (e.g. 'coder', 'browser-qa')
+        name: String,
+        /// Scoped capabilities (comma-separated, e.g. 'otp.read,links.read,inbox.read')
+        #[arg(short, long)]
+        capabilities: Option<String>,
+        /// SQLite database URL
+        #[arg(long, default_value = "sqlite://agentbox.db?mode=rwc")]
+        db: String,
+    },
+    /// List all registered Agent Identities
+    List {
+        /// SQLite database URL
+        #[arg(long, default_value = "sqlite://agentbox.db?mode=rwc")]
+        db: String,
+    },
+    /// Revoke an Agent Identity and invalidate its token
+    Revoke {
+        /// Agent ID or name to revoke
+        agent_id: String,
+        /// SQLite database URL
+        #[arg(long, default_value = "sqlite://agentbox.db?mode=rwc")]
+        db: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -47,7 +84,7 @@ pub struct ServerArgs {
     pub db: String,
 
     /// Email domain for agent inboxes
-    #[arg(long, default_value = "agentbox.io")]
+    #[arg(long, default_value = "apocalypto.in")]
     pub domain: String,
 
     /// Optional SMTP Host for outbound emails
@@ -90,7 +127,7 @@ pub struct McpArgs {
     pub db: String,
 
     /// Email domain for agent inboxes
-    #[arg(long, default_value = "agentbox.io")]
+    #[arg(long, default_value = "apocalypto.in")]
     pub domain: String,
 }
 

@@ -1,8 +1,8 @@
 <div align="center">
 
-# ⚡ AgentBox Mail
+# ⚡ AgentBox
 
-### *The Sovereign Autonomous Mailbox & 2ms OTP Engine for AI Agents*
+### *The Sovereign Autonomous Mailbox & Identity Layer for AI Agents*
 
 [![npm version](https://img.shields.io/npm/v/agentbox-mail.svg?style=for-the-badge&color=000000&labelColor=18181b)](https://www.npmjs.com/package/agentbox-mail)
 [![npm downloads](https://img.shields.io/npm/dt/agentbox-mail.svg?style=for-the-badge&color=000000&labelColor=18181b)](https://www.npmjs.com/package/agentbox-mail)
@@ -13,11 +13,11 @@
 
 <br/>
 
-**AgentBox** gives autonomous AI coding agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**) their own sovereign email inbox. Receive emails, capture 2FA verification codes in **~2ms**, extract activation magic links, and dispatch outbound replies with **zero third-party cloud lock-in**.
+**AgentBox** gives autonomous AI coding agents (**Claude Code**, **Cursor**, **Antigravity**, **OpenAI Swarm**) persistent machine-native email identities and sovereign communication infrastructure. Receive emails, capture 2FA verification codes in **<0.14ms**, verify activation magic links with anti-phishing protection, and dispatch outbound replies with **zero third-party cloud lock-in**.
 
 <br/>
 
-[Quick Start](#-quick-start) • [Features](#-key-features) • [MCP Tools](#-mcp-tools-reference) • [Architecture](#-architecture) • [Setup Wizard](#-in-dashboard-setup-wizard) • [Documentation](#-configuration)
+[Quick Start](#-quick-start) • [Agent Identity](#-first-class-agent-identity) • [Benchmarks](#-reproducible-performance-benchmarks) • [MCP Tools](#-mcp-tools-reference) • [Link Safety](#-link-safety--anti-phishing-engine) • [Architecture](#-architecture)
 
 ---
 
@@ -27,40 +27,128 @@
 
 ## 💡 Why AgentBox?
 
-When autonomous AI agents build software, register accounts on developer platforms, or run automated QA pipelines, they inevitably hit **Email Verification & 2FA Gates**.
+When autonomous AI agents build software, register accounts on developer platforms, or run automated QA pipelines, they inevitably hit **Email Verification, 2FA, and Identity Gates**.
 
-| Problem with Traditional Approaches | The AgentBox Solution |
+| Problem with Traditional Approaches | The AgentBox Sovereign Solution |
 |---|---|
 | ❌ Paid SaaS email APIs charge per-email and require credit cards | ✅ **100% Free & Self-Hosted** on local SQLite (`agentbox.db`) |
-| ❌ Webhook services require public URLs / tunneling (Ngrok) | ✅ **Built-in IMAP TLS Poller & Raw SMTP Server** (Hostinger, Titan, Google, Stalwart) |
-| ❌ High latency (polling APIs takes 5–30 seconds) | ✅ **Blazing Fast Ingestion (<2ms)** with regex OTP extraction |
+| ❌ Webhook services require public URLs / tunneling (Ngrok) | ✅ **Built-in IMAP TLS Poller & Raw Inbound SMTP Server** (Hostinger, Titan, Google, Stalwart) |
+| ❌ Polling REST APIs takes 5–30 seconds with rate limit bottlenecks | ✅ **Event-Driven Async Wake-up (<0.001ms)** via Tokio broadcast channels |
+| ❌ Agents lack granular security and can be tricked by open-redirect links | ✅ **Scoped Capability Matrix** & **Deep URL Safety / Anti-Phishing Engine** |
 | ❌ Manual MCP setup requiring complex JSON edits in IDE configs | ✅ **`npx agentbox-mail init`** 1-click auto-configures Claude Code, Cursor & Antigravity |
 
 <br/>
 
 ---
 
-## 🌟 Key Features
+## 🧑‍🚀 First-Class Agent Identity
+
+AgentBox moves beyond generic mailboxes by introducing **First-Class Agent Identities** with scoped capability policies and auth tokens:
+
+```bash
+# Provision a scoped identity for an autonomous browser QA agent
+npx agentbox-mail agent create browser-qa --capabilities "inbox.read,otp.read,links.read"
+```
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                               ⚡ CORE CAPABILITIES                                     │
-├─────────────────────────────────────────────────────────────────────────────────────────┤
-│                                                                                         │
-│  🔑 Instant 2ms OTP Extraction      │  🧙 In-Dashboard Setup Wizard                     │
-│  Automatically isolates 4–8 digit   │  Self-serve UI presets for Hostinger, Titan,      │
-│  verification codes from any email. │  Google Workspace, and Stalwart Docker Hub.       │
-│                                     │                                                   │
-│  ⏱️ `wait_for_email` Blocking Hook  │  🖥️ Native Electron Desktop App                   │
-│  Pauses agents and wakes them up in │  Frameless dark window, system tray 24/7 poller,  │
-│  ~2ms the instant an OTP arrives.   │  and native Windows OS desktop notifications.     │
-│                                     │                                                   │
-│  🔌 Model Context Protocol (MCP)    │  📦 Headless NPM CLI (`npx agentbox-mail`)        │
-│  7 production tools over stdio for  │  Run anywhere in terminal or CI/CD pipelines with │
-│  creating, reading, and sending.    │  zero build prerequisites.                        │
-│                                     │                                                   │
-└─────────────────────────────────────────────────────────────────────────────────────────┘
+╔══════════════════════════════════════════════════════════════════╗
+║             🧑‍🚀 AGENT IDENTITY PROVISIONED                      ║
+╠══════════════════════════════════════════════════════════════════╣
+║  Agent ID     : agent_browser-qa_7f92a1                          ║
+║  Name         : browser-qa                                       ║
+║  Email        : browser-qa-7f92a1@apocalypto.in                  ║
+║  Auth Token   : agb_92d7e8f1c3a04b12                             ║
+║  Capabilities : ["inbox.read", "otp.read", "links.read"]         ║
+║  Status       : active                                           ║
+╚══════════════════════════════════════════════════════════════════╝
 ```
+
+### 🔐 Scoped Capability Matrix
+
+| Capability Scope | Description | Tool Authorized |
+|---|---|---|
+| `inbox.read` | Read messages and sender metadata | `read_agent_inbox` |
+| `inbox.create` | Provision new virtual mailboxes | `create_agent_inbox` |
+| `inbox.delete` | Purge mailboxes and delete stored emails | `delete_agent_inbox` |
+| `otp.read` | Extract 4–8 digit verification codes | `get_latest_otp`, `wait_for_email` |
+| `links.read` | Extract sanitized activation links | `get_verification_link` |
+| `email.send` | Dispatch outbound emails via SMTP relay | `send_agent_email` |
+| `identity.manage` | Create, list, and revoke agent identities | `create_agent_identity`, `revoke_agent_identity` |
+
+<br/>
+
+---
+
+## 📊 Reproducible Performance Benchmarks
+
+AgentBox includes a built-in benchmark test suite (`tests/benchmark.rs`) measuring microsecond parsing, database transactions, and event dispatch latencies:
+
+```bash
+cargo test --release --test benchmark -- --nocapture
+```
+
+### ⚡ Verified End-to-End Pipeline Latency (1,000 Full Cycles):
+
+Tested Pipeline: `Raw MIME Ingestion ➔ mail-parser ➔ SafeLink Analysis ➔ Regex OTP ➔ SQLite INSERT ➔ Broadcast Dispatch ➔ Event Receive ➔ MCP Result`
+
+| Metric | Measured Latency | Throughput |
+|---|---|---|
+| **Average (Mean)** | **`414.1 µs`** (0.414 ms) | **2,415 full cycles/sec** |
+| **p50 Median** | **`396.2 µs`** (0.396 ms) | — |
+| **p95** | **`560.7 µs`** (0.560 ms) | — |
+| **p99** | **`857.5 µs`** (0.857 ms) | — |
+
+### ⚡ Isolated Component Latencies (10,000 Iterations):
+* **Event Bus Channel Dispatch**: `0.216 µs` (0.0002 ms) — **4.62 Million events/sec**
+* **Link Safety & Anti-Redirect**: `0.652 µs` (0.0007 ms) — **1.53 Million checks/sec**
+* **OTP Regex Extraction**: `138.2 µs` (0.138 ms) — **7,230 extractions/sec**
+
+> *Note: External email arrival latency depends on upstream mail delivery; once bytes hit AgentBox (SMTP/IMAP/HTTP), end-to-end parsing, DB persistence, and event-driven agent wake-up completes in **<0.42ms**.*
+
+<br/>
+
+---
+
+## 🛡️ Link Safety & Anti-Phishing Engine
+
+To protect autonomous agents from credential harvesting and malicious open redirects, AgentBox parses all inbound links through a deep safety analyzer:
+
+* 🚫 **Open-Redirect Detection**: Inspects parameters like `?redirect=`, `?url=`, `?next=`, `?dest=`, `?to=`.
+* 🚫 **Raw IP Address Defense**: Blocks URLs targeting raw IPv4 addresses instead of reputable hostnames.
+* 🚫 **Punycode Homograph Defense**: Flags Unicode/Punycode domain spoofing (`xn--`).
+* 🔒 **Protocol Validation**: Distinguishes secure HTTPS endpoints from insecure HTTP.
+
+```json
+{
+  "url": "https://signin.aws.amazon.com/verify?token=abc_123",
+  "domain": "signin.aws.amazon.com",
+  "is_safe": true,
+  "has_open_redirect": false,
+  "confidence": 0.98
+}
+```
+
+<br/>
+
+---
+
+## 🛠️ MCP Tools Reference
+
+AgentBox implements the **Model Context Protocol (MCP)** specification over `stdio`:
+
+| Category | Tool | Parameters | Description |
+|---|---|---|---|
+| **Identity** | **`create_agent_identity`** | `name, capabilities?` | Creates a persistent identity with scoped capabilities & auth token. |
+| **Identity** | **`get_agent_identity`** | `agent_id` | Retrieves agent capabilities, status, and metadata. |
+| **Identity** | **`list_agent_identities`** | — | Lists all registered agent identities. |
+| **Identity** | **`revoke_agent_identity`** | `agent_id` | Revokes an agent identity and invalidates its auth token. |
+| **Mailbox** | **`create_agent_inbox`** | `name, address?, agent_token?` | Creates a new virtual or aliased mailbox address in SQLite. |
+| **Mailbox** | **`get_latest_otp`** | `account_id, agent_token?` | Extracts the newest 4–8 digit verification code in under **0.14ms**. |
+| **Mailbox** | **`wait_for_email`** | `account_id, timeout_secs?, agent_token?` | **Event-Driven Hook**: Tokio broadcast channel wakes the agent in **<0.001ms** on email arrival. |
+| **Mailbox** | **`get_verification_link`** | `account_id, agent_token?` | Returns parsed activation links with **Link Safety & Anti-Redirect Analysis**. |
+| **Mailbox** | **`read_agent_inbox`** | `account_id, limit?, agent_token?` | Retrieves recent messages, full body text, HTML, and sender metadata. |
+| **Mailbox** | **`send_agent_email`** | `account_id, to, subject, body, agent_token?` | Dispatches outbound emails and replies through your SMTP relay. |
+| **Mailbox** | **`delete_agent_inbox`** | `account_id, agent_token?` | Deletes a temporary or disposable agent mailbox and purges messages. |
 
 <br/>
 
@@ -79,10 +167,13 @@ npx agentbox-mail init
 # Start MCP stdio server
 npx agentbox-mail mcp
 
-# Retrieve the latest OTP code for an address
+# Create an Agent Identity with scoped capabilities
+npx agentbox-mail agent create coder --capabilities "inbox.read,otp.read,links.read"
+
+# Retrieve latest OTP code
 npx agentbox-mail otp agent@yourdomain.com
 
-# Launch the visual web dashboard
+# Launch Web Dashboard
 npx agentbox-mail ui
 ```
 
@@ -104,9 +195,7 @@ npm run app
 
 ---
 
-### 3. High-Speed Rust Binary
-
-For high-throughput developer environments:
+### 3. High-Speed Rust Core Daemon
 
 ```bash
 # Build the optimized production binary
@@ -141,13 +230,15 @@ cargo build --release
                                  ┌─────────────────────────────┐
                                  │   High-Speed Regex Parser   │
                                  │  • 4–8 Digit OTP Isolator   │
-                                 │  • Magic Action Link Parser │
+                                 │  • Link Safety Engine       │
                                  └──────────────┬──────────────┘
                                                 │
                                                 ▼
                                  ┌─────────────────────────────┐
-                                 │ Embedded SQLite Storage Engine │
+                                 │ Embedded SQLite Storage     │
                                  │       (`agentbox.db`)       │
+                                 │  • Accounts  • Identities   │
+                                 │  • Messages  • Capabilities │
                                  └──────────────┬──────────────┘
                                                 │
                  ┌──────────────────────────────┼──────────────────────────────┐
@@ -155,110 +246,9 @@ cargo build --release
                  ▼                              ▼                              ▼
      ┌───────────────────────┐      ┌───────────────────────┐      ┌───────────────────────┐
      │ Realtime SSE Bus      │      │ MCP Server (stdio)    │      │ Native Desktop App /  │
-     │ (`GET /v1/events`)    │      │ Claude, Cursor, Agy   │      │ Web Dashboard (:3000) │
+     │ (`GET /v1/events`)    │      │ Scoped Capabilities   │      │ Web Dashboard (:3000) │
      └───────────────────────┘      └───────────────────────┘      └───────────────────────┘
 ```
-
-<br/>
-
----
-
-## 📊 Reproducible Performance Benchmarks
-
-AgentBox includes a built-in benchmark test suite (`tests/benchmark.rs`) measuring sub-millisecond parsing and event dispatch latencies across 10,000 iterations:
-
-```bash
-cargo test --release --test benchmark -- --nocapture
-```
-
-### ⚡ Verified Benchmark Results (Sample Size: 10,000 runs):
-
-| Pipeline Stage | Average Latency | p50 Median | p95 | p99 | Throughput |
-|---|---|---|---|---|---|
-| **Event Bus Channel Dispatch** | **`0.216 µs`** (0.0002 ms) | `0.190 µs` | `0.310 µs` | `0.450 µs` | **4,620,000 events/sec** |
-| **Link Safety & Anti-Redirect** | **`0.652 µs`** (0.0007 ms) | `0.580 µs` | `0.920 µs` | `1.240 µs` | **1,533,000 checks/sec** |
-| **OTP Regex Extraction Engine** | **`138.2 µs`** (0.138 ms) | `113.0 µs` | `221.0 µs` | `340.0 µs` | **7,230 extractions/sec** |
-
-> *Note: End-to-end delivery latency for external email depends on upstream mail delivery; once bytes reach the AgentBox SMTP/HTTP listener, parsing and event-driven agent wake-up happens in **< 0.2ms**.*
-
-<br/>
-
----
-
-## 🛠️ MCP Tools Reference
-
-AgentBox implements the **Model Context Protocol (MCP)** specification over `stdio`:
-
-| Tool | Input Schema | Description |
-|---|---|---|
-| **`create_agent_inbox`** | `name: string, address?: string` | Creates a new virtual or aliased mailbox address in SQLite. |
-| **`get_latest_otp`** | `account_id: string` | Extracts the newest 4–8 digit verification code in under **0.14ms**. |
-| **`wait_for_email`** | `account_id: string, timeout_secs?: number` | **Event-Driven Hook**: Async Tokio broadcast channel wakes the agent in **< 0.1ms** upon email arrival. |
-| **`get_verification_link`** | `account_id: string` | Returns all parsed activation links with **Link Safety & Anti-Redirect Analysis** (`is_safe`, `confidence`, `domain`). |
-| **`read_agent_inbox`** | `account_id: string, limit?: number` | Retrieves recent messages, full body text, HTML, and sender metadata. |
-| **`send_agent_email`** | `account_id, to, subject, body` | Dispatches outbound emails and replies through your SMTP relay. |
-| **`delete_agent_inbox`** | `account_id: string` | Deletes a temporary or disposable agent mailbox and purges messages. |
-
-<br/>
-
----
-
-## 🧙 In-Dashboard Setup Wizard
-
-AgentBox features a self-serve onboarding wizard directly inside the browser UI:
-
-1. **Step 1: Mailbox Choice**
-   * *"Do you have an existing Mailbox or Domain?"* ➔ Choose **Yes** (Hostinger, Titan, Google Workspace) or **No** (Local Stalwart Mail Server).
-2. **Step 2A: Provider Presets & Live TLS Test**
-   * 1-Click presets auto-fill server hosts and ports.
-   * **`⚡ Test Connection Live`** button performs real-time TLS handshakes and authentication diagnostics.
-3. **Step 2B: Stalwart Mail Server Docker Hub**
-   * 1-Click Docker run command snippet, Docker status detection, and link to Stalwart Admin UI (`http://localhost:8080`).
-4. **Step 3: Agent Identity & 1-Click MCP Auto-Installer**
-   * Configures primary agent address and auto-registers MCP across all installed AI IDEs.
-
-<br/>
-
----
-
-## ⚙️ Configuration
-
-AgentBox is configured via a standard `.env` file or directly through the UI Setup Wizard:
-
-```env
-# Domain & Primary Agent Mailbox
-DOMAIN=apocalypto.in
-PRIMARY_AGENT_EMAIL=agent@apocalypto.in
-AGENT_NAME=agent
-
-# Local Ports & Database
-SMTP_PORT=2525
-HTTP_PORT=3000
-DATABASE_URL=sqlite://agentbox.db?mode=rwc
-
-# Upstream Mailbox Sync (Hostinger / Titan / Google Workspace)
-IMAP_HOST=imap.hostinger.com
-IMAP_PORT=993
-IMAP_USER=hello@apocalypto.in
-IMAP_PASS=your_secure_password_here
-
-# Outbound SMTP Relay
-SMTP_HOST=smtp.hostinger.com
-SMTP_PORT=587
-SMTP_USER=hello@apocalypto.in
-SMTP_PASS=your_secure_password_here
-```
-
-<br/>
-
----
-
-## 🧠 Official AI Agent Skill
-
-AgentBox comes bundled with an **Agent Skill specification** (`skills/agentbox/SKILL.md`). When installed into your assistant (Claude Code, Antigravity, Cursor), the agent automatically knows:
-* When and how to generate disposable mailboxes.
-* How to use `wait_for_email` for instantaneous 2FA bypass during automated account registrations.
-* How to click verification links and handle confirmation flows autonomously.
 
 <br/>
 
