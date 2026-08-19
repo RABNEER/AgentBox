@@ -104,7 +104,7 @@ impl Database {
             .connect(database_url)
             .await?;
 
-        // Run migrations
+        // Run base table migrations
         sqlx::query(
             r#"
             CREATE TABLE IF NOT EXISTS accounts (
@@ -152,7 +152,19 @@ impl Database {
                 data_base64 TEXT,
                 FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE
             );
+            "#,
+        )
+        .execute(&pool)
+        .await?;
 
+        // Add owner_agent_id column if upgrading from older schema
+        let _ = sqlx::query("ALTER TABLE accounts ADD COLUMN owner_agent_id TEXT")
+            .execute(&pool)
+            .await;
+
+        // Create indexes safely after columns exist
+        sqlx::query(
+            r#"
             CREATE INDEX IF NOT EXISTS idx_messages_account ON messages(account_id);
             CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_accounts_address ON accounts(address);
@@ -163,11 +175,6 @@ impl Database {
         )
         .execute(&pool)
         .await?;
-
-        // Add owner_agent_id column if upgrading from older schema
-        let _ = sqlx::query("ALTER TABLE accounts ADD COLUMN owner_agent_id TEXT")
-            .execute(&pool)
-            .await;
 
         Ok(Self { pool })
     }
