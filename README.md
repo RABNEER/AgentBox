@@ -1,13 +1,16 @@
 # ⚡ AgentBox 2.0 — Autonomous Mailbox & Instant 2ms OTP Engine for AI Agents
 
+[![npm version](https://img.shields.io/npm/v/agentbox-mail.svg?style=flat-square&color=black)](https://www.npmjs.com/package/agentbox-mail)
+[![GitHub Release](https://img.shields.io/github/v/release/RABNEER/AgentBox?style=flat-square&color=black)](https://github.com/RABNEER/AgentBox/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
 > **The Sovereign Email Layer for AI Agents** (Claude Code, Cursor, Antigravity, OpenAI Swarm). Receive emails, capture 2FA OTP codes in ~2ms, click verification links, and dispatch outbound replies with zero third-party cloud lock-in.
 
 ---
 
 ## 🌟 What's New in AgentBox 2.0
 
-* **🖥️ Native Electron Desktop App**: Frameless luxury monochrome desktop application with Windows System Tray 24/7 background listener and native OS desktop toast notifications when OTPs arrive.
-* **📦 Headless NPM CLI (`npx agentbox`)**: Run anywhere in terminal or CI/CD pipelines with `npx agentbox init`, `mcp`, `otp`, `wait`, `ui`.
+* **📦 Headless NPM Package (`npx agentbox-mail`)**: Live on NPM! Run anywhere with `npx agentbox-mail init`, `mcp`, `otp`, `wait`, `ui`.
 * **🧙 In-Dashboard Setup Wizard**: Self-serve provider onboarding with 1-click presets for **Hostinger Mail**, **Titan Mail**, **Google Workspace**, or **Stalwart Mail Server Hub**.
 * **⚡ Live TLS Connection Tester**: Test IMAP and SMTP credentials directly in the UI before saving.
 * **🧠 Official AI Agent Skill (`agentbox`)**: Auto-installs into your AI coding assistants so they understand how to manage inboxes and capture OTPs autonomously.
