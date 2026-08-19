@@ -33,9 +33,9 @@ taskkill /F /IM agentbox-mail.exe >nul 2>nul
 echo.
 echo [2/6] Domain Configuration
 echo --------------------------------------------------------------------
-echo Enter the domain you want your agents to use (e.g. apocalypto.in, myai.com)
-set "DOMAIN=apocalypto.in"
-set /p USER_DOMAIN="► Domain name [Default: apocalypto.in]: "
+echo Enter the domain you want your agents to use (e.g. local.agentbox, myai.com)
+set "DOMAIN=local.agentbox"
+set /p USER_DOMAIN="► Domain name [Default: local.agentbox]: "
 if not "%USER_DOMAIN%"=="" (
     set "DOMAIN=%USER_DOMAIN%"
 )

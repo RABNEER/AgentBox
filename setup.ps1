@@ -24,8 +24,8 @@ Stop-Process -Name "agentbox-mail" -Force -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host "[2/6] Domain Configuration" -ForegroundColor Yellow
 Write-Host "--------------------------------------------------------------------"
-$domainInput = Read-Host "► Domain name [Default: apocalypto.in]"
-$domain = if ([string]::IsNullOrWhiteSpace($domainInput)) { "apocalypto.in" } else { $domainInput.Trim() }
+$domainInput = Read-Host "► Domain name [Default: local.agentbox]"
+$domain = if ([string]::IsNullOrWhiteSpace($domainInput)) { "local.agentbox" } else { $domainInput.Trim() }
 Write-Host "[OK] Domain set to: $domain" -ForegroundColor Green
 
 # 3. Interactive Agent Inbox Name Prompt

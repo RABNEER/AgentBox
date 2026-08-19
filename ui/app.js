@@ -504,7 +504,7 @@ async function detectIntegrations() {
         `).join("") + `<option value="new">+ Create New Identity...</option>`;
       } else {
         selectEl.innerHTML = `
-          <option value="default">General Agent (agent@${window.location.hostname || 'apocalypto.in'})</option>
+          <option value="default">General Agent (agent@${window.location.hostname || 'local.agentbox'})</option>
           <option value="new">+ Create New Custom Identity...</option>
         `;
       }

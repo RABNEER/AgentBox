@@ -1290,7 +1290,7 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
         &claude_config_path,
         &current_exe,
         None,
-        "agent@apocalypto.in",
+        "agent@local.agentbox",
     ) {
         installed_list.push("Claude Code (~/.claude.json)".to_string());
     }
@@ -1301,7 +1301,7 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
         cursor_config_path,
         &current_exe,
         None,
-        "agent@apocalypto.in",
+        "agent@local.agentbox",
     ) {
         installed_list.push("Cursor Workspace (.cursor/mcp.json)".to_string());
     }
@@ -1309,7 +1309,7 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
     let antigravity_dir = format!("{}/.gemini/config", user_home);
     let _ = std::fs::create_dir_all(&antigravity_dir);
     let antigravity_path = format!("{}/mcp_config.json", antigravity_dir);
-    if write_mcp_server_config(&antigravity_path, &current_exe, None, "agent@apocalypto.in") {
+    if write_mcp_server_config(&antigravity_path, &current_exe, None, "agent@local.agentbox") {
         installed_list.push("Antigravity IDE (mcp_config.json)".to_string());
     }
 

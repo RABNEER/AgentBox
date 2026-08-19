@@ -428,11 +428,11 @@
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                         <div class="space-y-1">
                             <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Domain</label>
-                            <input type="text" id="cfg-domain" value="apocalypto.in" placeholder="yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                            <input type="text" id="cfg-domain" value="" placeholder="yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
                         </div>
                         <div class="space-y-1">
                             <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Login Email Address</label>
-                            <input type="email" id="cfg-user" value="hello@apocalypto.in" placeholder="user@yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                            <input type="email" id="cfg-user" value="" placeholder="user@yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
                         </div>
                         <div class="space-y-1 sm:col-span-2">
                             <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Password / App Password</label>
@@ -441,14 +441,14 @@
                         <div class="space-y-1">
                             <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">IMAP Host & Port</label>
                             <div class="flex gap-2">
-                                <input type="text" id="cfg-imap-host" value="imap.hostinger.com" class="flex-1 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                                <input type="text" id="cfg-imap-host" value="imap.hostinger.com" placeholder="imap.provider.com" class="flex-1 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
                                 <input type="number" id="cfg-imap-port" value="993" class="w-20 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono text-center">
                             </div>
                         </div>
                         <div class="space-y-1">
                             <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Outbound SMTP Host & Port</label>
                             <div class="flex gap-2">
-                                <input type="text" id="cfg-smtp-host" value="smtp.hostinger.com" class="flex-1 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                                <input type="text" id="cfg-smtp-host" value="smtp.hostinger.com" placeholder="smtp.provider.com" class="flex-1 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
                                 <input type="number" id="cfg-smtp-port" value="587" class="w-20 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono text-center">
                             </div>
                         </div>
@@ -509,7 +509,7 @@
 
                     <div class="space-y-1">
                         <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Primary Agent Address</label>
-                        <input type="email" id="cfg-primary-email" value="agent@apocalypto.in" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                        <input type="email" id="cfg-primary-email" value="" placeholder="agent@yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
                     </div>
 
                     <!-- 1-Click MCP Auto-Installer Box -->
@@ -751,6 +751,130 @@
                 <button type="button" id="connect-submit-btn" onclick="submitConnectAgents()" class="compose-btn text-xs font-bold px-6 py-2.5 rounded-xl flex items-center gap-2">
                     <i data-lucide="zap" class="w-4 h-4"></i>
                     <span>Connect Selected Agents</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- First-Run Interactive Onboarding Modal -->
+    <div id="onboarding-modal" class="compose-modal fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/90 backdrop-blur-md" onclick="closeOnboardingWizard()"></div>
+        <div class="relative w-full max-w-2xl bg-base-900 border border-base-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="px-8 pt-8 pb-4 bg-gradient-to-b from-base-850 to-base-900 border-b border-base-800">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 rounded-2xl bg-white text-black flex items-center justify-center font-bold text-xl shadow-xl">
+                            ⚡
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-bold text-white tracking-tight">Welcome to AgentBox</h2>
+                            <p class="text-xs text-base-400">The sovereign email & persistent identity layer for AI agents.</p>
+                        </div>
+                    </div>
+                    <button onclick="closeOnboardingWizard()" class="action-btn p-2 text-base-400 hover:text-white" title="Skip to Dashboard">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <!-- Progress steps -->
+                <div class="flex items-center gap-2 mt-6">
+                    <div id="ob-step-bar-1" class="h-1 flex-1 rounded-full bg-white transition-all"></div>
+                    <div id="ob-step-bar-2" class="h-1 flex-1 rounded-full bg-base-800 transition-all"></div>
+                    <div id="ob-step-bar-3" class="h-1 flex-1 rounded-full bg-base-800 transition-all"></div>
+                </div>
+            </div>
+
+            <!-- Body Container -->
+            <div class="p-8 overflow-y-auto flex-1 space-y-6">
+                <!-- STEP 1: Choose Mode -->
+                <div id="ob-step-1" class="space-y-4">
+                    <div>
+                        <h4 class="text-sm font-bold text-white">How would you like to use AgentBox?</h4>
+                        <p class="text-xs text-base-400">Choose a fast sandbox mode or connect your custom domain.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                        <!-- Quick Sandbox Option -->
+                        <div onclick="selectOnboardingMode('sandbox')" id="ob-mode-sandbox" class="p-5 rounded-2xl border-2 border-white bg-base-850/70 hover:border-white transition-all cursor-pointer space-y-3 group">
+                            <div class="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center font-bold">
+                                ⚡
+                            </div>
+                            <div>
+                                <h5 class="text-xs font-bold text-white flex items-center gap-1.5">
+                                    <span>Instant Sandbox Mode</span>
+                                    <span class="px-1.5 py-0.2 text-[9px] font-mono bg-emerald-500/20 text-emerald-300 rounded font-semibold">Recommended</span>
+                                </h5>
+                                <p class="text-[11px] text-base-400 mt-1 leading-relaxed">No email password required. Instantly provisions local agent mailboxes for testing, OTP extraction, and MCP tools.</p>
+                            </div>
+                        </div>
+
+                        <!-- Custom Domain Option -->
+                        <div onclick="selectOnboardingMode('custom')" id="ob-mode-custom" class="p-5 rounded-2xl border border-base-800 bg-base-950/60 hover:border-base-700 transition-all cursor-pointer space-y-3 group">
+                            <div class="w-10 h-10 rounded-xl bg-base-800 text-white flex items-center justify-center">
+                                <i data-lucide="globe" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h5 class="text-xs font-bold text-white">Connect Custom Mailbox / Domain</h5>
+                                <p class="text-[11px] text-base-400 mt-1 leading-relaxed">Connect Hostinger, Titan, Google Workspace, AWS SES, Resend, or your private IMAP/SMTP server.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 2: Agent Identity Setup -->
+                <div id="ob-step-2" class="space-y-4 hidden">
+                    <div id="ob-identity-sandbox-info">
+                        <h4 class="text-sm font-bold text-white">Create Your Agent's Email Identity</h4>
+                        <p class="text-xs text-base-400">Give your autonomous agent its own persistent name and address.</p>
+                    </div>
+
+                    <div class="space-y-4 bg-base-950 p-5 rounded-2xl border border-base-800">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div class="space-y-1">
+                                <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Agent Name</label>
+                                <input type="text" id="ob-agent-name" value="General Agent" placeholder="e.g. researcher, coder, support" oninput="updateObEmailPreview()" class="w-full bg-base-900 border border-base-750 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-white font-mono">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Domain</label>
+                                <input type="text" id="ob-domain" value="local.agentbox" placeholder="yourdomain.com" oninput="updateObEmailPreview()" class="w-full bg-base-900 border border-base-750 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-white font-mono">
+                            </div>
+                        </div>
+
+                        <div class="p-3.5 rounded-xl bg-base-900/90 border border-base-800 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <div class="w-8 h-8 rounded-lg bg-base-800 flex items-center justify-center text-emerald-400">
+                                    <i data-lucide="mail" class="w-4 h-4"></i>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] uppercase font-bold text-base-500 tracking-wider block">Assigned Email Identity</span>
+                                    <span class="text-xs font-mono font-bold text-emerald-300" id="ob-preview-email">agent@local.agentbox</span>
+                                </div>
+                            </div>
+                            <span class="px-2 py-0.5 text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 rounded-md">Ready</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 3: Connect to Local AI Agents -->
+                <div id="ob-step-3" class="space-y-4 hidden">
+                    <div>
+                        <h4 class="text-sm font-bold text-white">Auto-Connect AI Agents (1-Click)</h4>
+                        <p class="text-xs text-base-400">Select which AI coding tools or IDEs on your computer to connect.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5" id="ob-frameworks-list">
+                        <div class="p-4 text-center text-xs text-base-500 border border-base-800 rounded-xl bg-base-950 col-span-2">Scanning AI tools...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="flex items-center justify-between px-8 py-5 border-t border-base-800 bg-base-950">
+                <button type="button" id="ob-back-btn" onclick="obBack()" class="px-4 py-2 text-xs font-semibold text-base-400 hover:text-white hidden">Back</button>
+                <div class="flex-1"></div>
+                <button type="button" id="ob-next-btn" onclick="obNext()" class="compose-btn text-xs font-bold px-7 py-3 rounded-xl flex items-center gap-2 shadow-lg">
+                    <span>Continue</span>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
                 </button>
             </div>
         </div>
@@ -1057,7 +1181,7 @@
         }
 
         function applyProviderPreset(preset) {
-            const domain = document.getElementById('cfg-domain').value || 'apocalypto.in';
+            const domain = document.getElementById('cfg-domain').value || 'yourdomain.com';
             if (preset === 'hostinger') {
                 document.getElementById('cfg-imap-host').value = 'imap.hostinger.com';
                 document.getElementById('cfg-imap-port').value = 993;
@@ -1088,8 +1212,8 @@
             document.getElementById('cfg-smtp-host').value = 'localhost';
             document.getElementById('cfg-smtp-port').value = 587;
             document.getElementById('cfg-user').value = 'admin';
-            document.getElementById('cfg-domain').value = 'local.agent';
-            document.getElementById('cfg-primary-email').value = 'agent@local.agent';
+            document.getElementById('cfg-domain').value = 'local.agentbox';
+            document.getElementById('cfg-primary-email').value = 'agent@local.agentbox';
             showToast('Auto-filled localhost Stalwart settings');
             goToStep(3);
         }
@@ -1186,7 +1310,7 @@
         }
 
         async function saveConfiguration() {
-            const domain = document.getElementById('cfg-domain').value || 'apocalypto.in';
+            const domain = document.getElementById('cfg-domain').value || 'local.agentbox';
             const primary_email = document.getElementById('cfg-primary-email').value || `agent@${domain}`;
             const imap_host = document.getElementById('cfg-imap-host').value;
             const imap_port = parseInt(document.getElementById('cfg-imap-port').value) || 993;
@@ -1250,11 +1374,44 @@
                     renderEmailList([]);
                     renderEmptyDetail();
                     updateCounts();
+
+                    if (!localStorage.getItem('agentbox_onboarded_dismissed')) {
+                        setTimeout(() => {
+                            openOnboardingWizard();
+                        }, 400);
+                    }
                 }
             } catch (err) {
                 console.error('Error loading accounts:', err);
                 document.getElementById('inbox-nav-list').innerHTML = '<div class="text-xs text-red-400 px-3 py-2">Error loading inboxes</div>';
             }
+        }
+
+        function renderEmptyDetail() {
+            const container = document.getElementById('email-detail-container');
+            if (!container) return;
+            container.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center text-center p-8 text-base-500 space-y-4">
+                    <div class="w-16 h-16 rounded-2xl bg-base-900 border border-base-800 flex items-center justify-center text-white shadow-xl">
+                        <i data-lucide="mail-open" class="w-8 h-8"></i>
+                    </div>
+                    <div class="space-y-1.5 max-w-sm">
+                        <h3 class="text-sm font-bold text-white">Welcome to AgentBox</h3>
+                        <p class="text-xs text-base-400">Give any AI agent its own email identity, OTP extraction, and MCP tools.</p>
+                    </div>
+                    <div class="flex items-center gap-2 pt-2">
+                        <button onclick="openOnboardingWizard()" class="text-xs font-bold text-black bg-white hover:bg-base-200 px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-md">
+                            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                            <span>Start Quick Setup</span>
+                        </button>
+                        <button onclick="openConnectAgentsModal()" class="text-xs font-semibold text-base-300 bg-base-850 hover:bg-base-800 border border-base-700 px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all">
+                            <i data-lucide="bot" class="w-3.5 h-3.5"></i>
+                            <span>Connect Agents</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            if (window.lucide) lucide.createIcons();
         }
 
         async function loadMessages(accountId) {
@@ -1835,7 +1992,7 @@
                         `).join('') + '<option value="new">+ Create New Identity...</option>';
                     } else {
                         selectEl.innerHTML = `
-                            <option value="default">General Agent (agent@${window.location.hostname || 'apocalypto.in'})</option>
+                            <option value="default">General Agent (agent@${window.location.hostname || 'local.agentbox'})</option>
                             <option value="new">+ Create New Custom Identity...</option>
                         `;
                     }
@@ -1947,6 +2104,187 @@
                 resultsList.innerHTML = `<div class="text-red-400 text-xs p-2">Error connecting: ${escapeHtml(err.message)}</div>`;
                 submitBtn.innerHTML = '<i data-lucide="zap" class="w-4 h-4"></i> Retry Connection';
                 submitBtn.disabled = false;
+            }
+        }
+
+        // =========================================================================
+        // First-Run Interactive Onboarding Wizard
+        // =========================================================================
+
+        let obCurrentStep = 1;
+        let obSelectedMode = 'sandbox'; // 'sandbox' or 'custom'
+
+        function openOnboardingWizard() {
+            const modal = document.getElementById('onboarding-modal');
+            if (!modal) return;
+            modal.classList.add('open');
+            goToObStep(1);
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function closeOnboardingWizard() {
+            const modal = document.getElementById('onboarding-modal');
+            if (modal) modal.classList.remove('open');
+            localStorage.setItem('agentbox_onboarded_dismissed', 'true');
+        }
+
+        function selectOnboardingMode(mode) {
+            obSelectedMode = mode;
+            const sandboxCard = document.getElementById('ob-mode-sandbox');
+            const customCard = document.getElementById('ob-mode-custom');
+
+            if (mode === 'sandbox') {
+                sandboxCard.className = 'p-5 rounded-2xl border-2 border-white bg-base-850/70 hover:border-white transition-all cursor-pointer space-y-3 group';
+                customCard.className = 'p-5 rounded-2xl border border-base-800 bg-base-950/60 hover:border-base-700 transition-all cursor-pointer space-y-3 group';
+                document.getElementById('ob-domain').value = 'local.agentbox';
+            } else {
+                customCard.className = 'p-5 rounded-2xl border-2 border-white bg-base-850/70 hover:border-white transition-all cursor-pointer space-y-3 group';
+                sandboxCard.className = 'p-5 rounded-2xl border border-base-800 bg-base-950/60 hover:border-base-700 transition-all cursor-pointer space-y-3 group';
+                document.getElementById('ob-domain').value = '';
+            }
+            updateObEmailPreview();
+        }
+
+        function updateObEmailPreview() {
+            const name = (document.getElementById('ob-agent-name').value || 'agent').trim().toLowerCase().replace(/\s+/g, '-');
+            const domain = (document.getElementById('ob-domain').value || (obSelectedMode === 'sandbox' ? 'local.agentbox' : 'yourdomain.com')).trim();
+            const previewEl = document.getElementById('ob-preview-email');
+            if (previewEl) {
+                previewEl.textContent = `${name}@${domain}`;
+            }
+        }
+
+        function goToObStep(step) {
+            obCurrentStep = step;
+            document.getElementById('ob-step-1').classList.add('hidden');
+            document.getElementById('ob-step-2').classList.add('hidden');
+            document.getElementById('ob-step-3').classList.add('hidden');
+
+            const backBtn = document.getElementById('ob-back-btn');
+            const nextBtn = document.getElementById('ob-next-btn');
+
+            document.getElementById('ob-step-bar-1').className = 'h-1 flex-1 rounded-full ' + (step >= 1 ? 'bg-white' : 'bg-base-800');
+            document.getElementById('ob-step-bar-2').className = 'h-1 flex-1 rounded-full ' + (step >= 2 ? 'bg-white' : 'bg-base-800');
+            document.getElementById('ob-step-bar-3').className = 'h-1 flex-1 rounded-full ' + (step >= 3 ? 'bg-white' : 'bg-base-800');
+
+            if (step === 1) {
+                document.getElementById('ob-step-1').classList.remove('hidden');
+                backBtn.classList.add('hidden');
+                nextBtn.innerHTML = '<span>Continue</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>';
+            } else if (step === 2) {
+                document.getElementById('ob-step-2').classList.remove('hidden');
+                backBtn.classList.remove('hidden');
+                nextBtn.innerHTML = '<span>Next: Connect Agents</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>';
+                updateObEmailPreview();
+            } else if (step === 3) {
+                document.getElementById('ob-step-3').classList.remove('hidden');
+                backBtn.classList.remove('hidden');
+                nextBtn.innerHTML = '<span>🚀 Finish & Launch Inbox</span> <i data-lucide="check" class="w-4 h-4"></i>';
+                loadObFrameworks();
+            }
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        async function loadObFrameworks() {
+            const listEl = document.getElementById('ob-frameworks-list');
+            if (!listEl) return;
+            try {
+                const res = await fetch('/v1/integrations/detect');
+                if (res.ok) {
+                    const data = await res.json();
+                    const fws = data.frameworks || [];
+                    listEl.innerHTML = fws.map(fw => `
+                        <label class="setup-card p-3 flex items-start gap-2.5 cursor-pointer rounded-xl border border-base-750 bg-base-850 hover:bg-base-800 transition-all ${fw.detected ? 'border-emerald-500/40 bg-emerald-500/[0.03]' : 'opacity-85'}">
+                            <input type="checkbox" value="${fw.id}" ${fw.detected ? 'checked' : ''} class="email-check mt-0.5" id="ob-fw-${fw.id}">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between">
+                                    <span class="text-xs font-bold text-white tracking-tight">${escapeHtml(fw.name)}</span>
+                                    <span class="text-[9px] font-mono px-1.5 py-0.2 rounded-full ${fw.detected ? 'bg-emerald-500/10 text-emerald-400 font-semibold' : 'bg-base-700 text-base-400'}">${escapeHtml(fw.status)}</span>
+                                </div>
+                                <p class="text-[10px] text-base-400 truncate">${escapeHtml(fw.description)}</p>
+                            </div>
+                        </label>
+                    `).join('');
+                }
+            } catch (e) {
+                listEl.innerHTML = '<div class="p-3 text-xs text-base-400">Ready to configure IDEs</div>';
+            }
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function obBack() {
+            if (obCurrentStep > 1) {
+                goToObStep(obCurrentStep - 1);
+            }
+        }
+
+        async function obNext() {
+            if (obCurrentStep === 1) {
+                if (obSelectedMode === 'custom') {
+                    closeOnboardingWizard();
+                    openSetupWizard();
+                    return;
+                }
+                goToObStep(2);
+            } else if (obCurrentStep === 2) {
+                goToObStep(3);
+            } else if (obCurrentStep === 3) {
+                const nextBtn = document.getElementById('ob-next-btn');
+                nextBtn.disabled = true;
+                nextBtn.innerHTML = '<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Launching...';
+                if (window.lucide) window.lucide.createIcons();
+
+                const agentName = (document.getElementById('ob-agent-name').value || 'General Agent').trim();
+                const domain = (document.getElementById('ob-domain').value || 'local.agentbox').trim();
+                const agentEmail = `${agentName.toLowerCase().replace(/\s+/g, '-')}@${domain}`;
+
+                try {
+                    // 1. Create account
+                    const accRes = await fetch('/v1/accounts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            address: agentEmail,
+                            display_name: agentName
+                        })
+                    });
+
+                    // 2. Create agent identity
+                    await fetch('/v1/agents', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            name: agentName,
+                            email: agentEmail,
+                            capabilities: ['inbox.read', 'otp.read', 'links.read', 'email.send', 'task.claim']
+                        })
+                    });
+
+                    // 3. Connect selected frameworks
+                    const checkedFws = Array.from(document.querySelectorAll('#ob-frameworks-list input[type="checkbox"]:checked')).map(cb => cb.value);
+                    if (checkedFws.length > 0) {
+                        await fetch('/v1/integrations/connect', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                frameworks: checkedFws,
+                                agent_email: agentEmail,
+                                capabilities: ['inbox.read', 'otp.read', 'links.read', 'email.send', 'task.claim']
+                            })
+                        });
+                    }
+
+                    localStorage.setItem('agentbox_onboarded_dismissed', 'true');
+                    closeOnboardingWizard();
+                    showToast(`🎉 Setup complete! Active mailbox: ${agentEmail}`);
+                    await loadAccounts();
+                } catch (e) {
+                    showToast('Error during setup: ' + e.message);
+                } finally {
+                    nextBtn.disabled = false;
+                    nextBtn.innerHTML = '<span>🚀 Finish & Launch Inbox</span> <i data-lucide="check" class="w-4 h-4"></i>';
+                    if (window.lucide) window.lucide.createIcons();
+                }
             }
         }
     </script>

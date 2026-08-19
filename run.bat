@@ -13,10 +13,10 @@ if exist "%USERPROFILE%\.cargo\bin\cargo.exe" (
 )
 
 :: Read configuration from .env if it exists
-set "DOMAIN=apocalypto.in"
+set "DOMAIN=local.agentbox"
 set "PORT=3000"
 set "SMTP_INBOUND_PORT=2525"
-set "PRIMARY_EMAIL=agent@apocalypto.in"
+set "PRIMARY_EMAIL=agent@local.agentbox"
 
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%A in (".env") do (

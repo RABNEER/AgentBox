@@ -16,7 +16,7 @@ AgentBox 2.1.0 is a complete, native **Windows Desktop Email Client** (like Micr
 ## ✨ What's Inside the Desktop App
 
 1. **📬 Outlook-Style 3-Pane Interface**:
-   - **Left Folder Navigation**: Agent identities (`hello@apocalypto.in`, `researcher@...`, `coder@...`), Views (Inbox, OTP codes, Action links, Task Protocol).
+   - **Left Folder Navigation**: Agent identities (`agent@local.agentbox`, `researcher@...`, `coder@...`), Views (Inbox, OTP codes, Action links, Task Protocol).
    - **Middle Stream**: Search bar, instant filters (All, Unread, OTPs), real-time incoming mail stream.
    - **Right Reading Pane & Composer**: Rich email viewer, OTP 1-click copy badge, action link security verification, inline reply box, and full composer.
 

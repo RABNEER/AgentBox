@@ -3,10 +3,10 @@ Write-Host "          ⚡ Starting AgentBox Mail All-In-One Engine" -ForegroundC
 Write-Host "================================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$domain = "apocalypto.in"
+$domain = "local.agentbox"
 $port = "3000"
 $smtpPort = "2525"
-$primaryEmail = "agent@apocalypto.in"
+$primaryEmail = "agent@local.agentbox"
 
 if (Test-Path ".env") {
     Get-Content ".env" | ForEach-Object {

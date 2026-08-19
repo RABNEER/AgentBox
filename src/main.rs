@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             smtp_inbound_port: 2525,
             no_smtp: false,
             db: "sqlite://agentbox.db?mode=rwc".to_string(),
-            domain: "apocalypto.in".to_string(),
+            domain: "local.agentbox".to_string(),
             smtp_host: None,
             smtp_port: 587,
             smtp_user: None,
@@ -95,16 +95,13 @@ async fn run_server(args: ServerArgs) -> Result<(), Box<dyn std::error::Error + 
 
     let domain = std::env::var("DOMAIN").unwrap_or(args.domain);
 
-    // Auto-provision main and agent inboxes
-    let _ = db
-        .create_account(&format!("hello@{}", domain), Some("Primary Domain Mailbox"))
-        .await;
-    let _ = db
-        .create_account(
-            &format!("agent@{}", domain),
-            Some("Autonomous Agent Mailbox"),
-        )
-        .await;
+    // Auto-provision main and agent inboxes ONLY if custom domain is explicitly passed via env
+    if let Ok(custom_domain) = std::env::var("DOMAIN") {
+        if !custom_domain.trim().is_empty() && custom_domain != "local.agentbox" {
+            let _ = db.create_account(&format!("hello@{}", custom_domain), Some("Primary Domain Mailbox")).await;
+            let _ = db.create_account(&format!("agent@{}", custom_domain), Some("Autonomous Agent Mailbox")).await;
+        }
+    }
 
     let mailer = OutboundMailer::new(smtp_host, smtp_port, smtp_user, smtp_pass);
 
@@ -368,7 +365,7 @@ async fn run_agent(args: AgentArgs) -> Result<(), Box<dyn std::error::Error + Se
             db,
         } => {
             let db_inst = Database::init(&db).await?;
-            let domain = std::env::var("DOMAIN").unwrap_or_else(|_| "apocalypto.in".to_string());
+            let domain = std::env::var("DOMAIN").unwrap_or_else(|_| "local.agentbox".to_string());
             let agent_email = if let Some(custom) = email {
                 custom
             } else {

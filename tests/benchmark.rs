@@ -20,7 +20,7 @@ async fn benchmark_full_e2e_mcp_pipeline_latency() {
     let mcp = Arc::new(McpServer::new(
         db.clone(),
         mailer,
-        "apocalypto.in".to_string(),
+        "test.agentbox".to_string(),
         Some(tx.clone()),
     ));
 
@@ -28,18 +28,18 @@ async fn benchmark_full_e2e_mcp_pipeline_latency() {
     let creds = db
         .create_agent_identity(
             "bench-agent",
-            "bench@apocalypto.in",
+            "bench@test.agentbox",
             &["otp.read".to_string(), "inbox.read".to_string()],
         )
         .await
         .unwrap();
     let account = db
-        .get_account_by_address("bench@apocalypto.in")
+        .get_account_by_address("bench@test.agentbox")
         .await
         .unwrap()
         .unwrap();
 
-    let raw_email = b"From: auth@github.com\r\nTo: bench@apocalypto.in\r\nSubject: [GitHub] Verification code is 782014\r\nContent-Type: text/html\r\n\r\n<html><body><p>Your OTP code is <b>782014</b>.</p><p><a href=\"https://github.com/verify?token=782014\">Verify Now</a></p></body></html>";
+    let raw_email = b"From: auth@github.com\r\nTo: bench@test.agentbox\r\nSubject: [GitHub] Verification code is 782014\r\nContent-Type: text/html\r\n\r\n<html><body><p>Your OTP code is <b>782014</b>.</p><p><a href=\"https://github.com/verify?token=782014\">Verify Now</a></p></body></html>";
 
     let iterations = 1_000;
     let mut latencies_nanos = Vec::with_capacity(iterations);
@@ -176,7 +176,7 @@ async fn test_object_level_resource_ownership_and_access_denial() {
     let mcp = Arc::new(McpServer::new(
         db.clone(),
         mailer,
-        "apocalypto.in".to_string(),
+        "test.agentbox".to_string(),
         None,
     ));
 
@@ -184,7 +184,7 @@ async fn test_object_level_resource_ownership_and_access_denial() {
     let agent_a = db
         .create_agent_identity(
             "agent-a",
-            "agent-a@apocalypto.in",
+            "agent-a@test.agentbox",
             &["inbox.read".to_string(), "otp.read".to_string()],
         )
         .await
@@ -192,19 +192,19 @@ async fn test_object_level_resource_ownership_and_access_denial() {
     let _agent_b = db
         .create_agent_identity(
             "agent-b",
-            "agent-b@apocalypto.in",
+            "agent-b@test.agentbox",
             &["inbox.read".to_string(), "otp.read".to_string()],
         )
         .await
         .unwrap();
 
     let account_a = db
-        .get_account_by_address("agent-a@apocalypto.in")
+        .get_account_by_address("agent-a@test.agentbox")
         .await
         .unwrap()
         .unwrap();
     let account_b = db
-        .get_account_by_address("agent-b@apocalypto.in")
+        .get_account_by_address("agent-b@test.agentbox")
         .await
         .unwrap()
         .unwrap();
@@ -336,7 +336,7 @@ async fn test_autonomous_agent_task_orchestration_and_audit_lineage() {
     let mcp = Arc::new(McpServer::new(
         db.clone(),
         mailer,
-        "apocalypto.in".to_string(),
+        "test.agentbox".to_string(),
         Some(tx.clone()),
     ));
 
@@ -344,7 +344,7 @@ async fn test_autonomous_agent_task_orchestration_and_audit_lineage() {
     let jules = db
         .create_agent_identity(
             "jules",
-            "jules@apocalypto.in",
+            "jules@test.agentbox",
             &["task.dispatch".to_string(), "task.read".to_string()],
         )
         .await
@@ -353,7 +353,7 @@ async fn test_autonomous_agent_task_orchestration_and_audit_lineage() {
     let coder = db
         .create_agent_identity(
             "coder",
-            "coder@apocalypto.in",
+            "coder@test.agentbox",
             &[
                 "task.claim".to_string(),
                 "task.update".to_string(),
@@ -517,7 +517,7 @@ async fn test_automatic_email_to_agent_task_and_mcp_orchestration() {
     let mcp = Arc::new(McpServer::new(
         db.clone(),
         mailer,
-        "apocalypto.in".to_string(),
+        "test.agentbox".to_string(),
         Some(tx.clone()),
     ));
 
@@ -525,7 +525,7 @@ async fn test_automatic_email_to_agent_task_and_mcp_orchestration() {
     let coder = db
         .create_agent_identity(
             "coder",
-            "coder@apocalypto.in",
+            "coder@test.agentbox",
             &[
                 "task.claim".to_string(),
                 "task.update".to_string(),
@@ -536,14 +536,14 @@ async fn test_automatic_email_to_agent_task_and_mcp_orchestration() {
         .unwrap();
 
     // 2. Jules sends an email over SMTP format
-    let raw_email = b"From: jules@external.ai\r\nTo: coder@apocalypto.in\r\nSubject: [TASK:BUG] Fix duplicate property filter in EstateFlow\r\nContent-Type: text/plain\r\n\r\nRepository: RABNEER/EstateFlow\r\nPriority: high\r\nEvidence: tests/property-search.spec.ts:87\r\nExpected: Deduplicate property query results";
+    let raw_email = b"From: jules@external.ai\r\nTo: coder@test.agentbox\r\nSubject: [TASK:BUG] Fix duplicate property filter in EstateFlow\r\nContent-Type: text/plain\r\n\r\nRepository: RABNEER/EstateFlow\r\nPriority: high\r\nEvidence: tests/property-search.spec.ts:87\r\nExpected: Deduplicate property query results";
 
     let parsed = EmailParser::parse_mime(raw_email).expect("MIME parse failed");
 
     // Simulate Inbound Ingestion Pipeline with TaskDetector
     let msg_id = format!("msg_{}", &Uuid::new_v4().to_string().replace('-', "")[..12]);
     let account = db
-        .get_account_by_address("coder@apocalypto.in")
+        .get_account_by_address("coder@test.agentbox")
         .await
         .unwrap()
         .unwrap();
@@ -551,7 +551,7 @@ async fn test_automatic_email_to_agent_task_and_mcp_orchestration() {
         id: msg_id.clone(),
         account_id: account.id.clone(),
         from_address: parsed.from.clone(),
-        to_address: "coder@apocalypto.in".to_string(),
+        to_address: "coder@test.agentbox".to_string(),
         subject: parsed.subject.clone(),
         body_text: parsed.body_text.clone(),
         body_html: None,

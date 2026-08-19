@@ -87,7 +87,7 @@ pub struct ServerArgs {
     pub db: String,
 
     /// Email domain for agent inboxes
-    #[arg(long, default_value = "apocalypto.in")]
+    #[arg(long, default_value = "local.agentbox")]
     pub domain: String,
 
     /// Optional SMTP Host for outbound emails
@@ -114,7 +114,7 @@ pub struct ServerArgs {
     #[arg(long, default_value = "993")]
     pub imap_port: u16,
 
-    /// Optional IMAP Username (e.g. agent@apocalypto.in)
+    /// Optional IMAP Username (e.g. user@yourdomain.com)
     #[arg(long)]
     pub imap_user: Option<String>,
 
@@ -130,7 +130,7 @@ pub struct McpArgs {
     pub db: String,
 
     /// Email domain for agent inboxes
-    #[arg(long, default_value = "apocalypto.in")]
+    #[arg(long, default_value = "local.agentbox")]
     pub domain: String,
 }
 

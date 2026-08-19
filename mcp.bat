@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 :: Read configuration from .env if it exists
-set "DOMAIN=apocalypto.in"
+set "DOMAIN=local.agentbox"
 if exist ".env" (
     for /f "usebackq tokens=1,* delims==" %%A in (".env") do (
         if "%%A"=="DOMAIN" set "DOMAIN=%%B"

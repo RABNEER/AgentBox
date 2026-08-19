@@ -34,7 +34,7 @@ When connected to the `agentbox` MCP server, you have access to the following to
 Asynchronously blocks until a new email arrives for the specified account address:
 ```json
 {
-  "account_id": "agent@apocalypto.in",
+  "account_id": "agent@local.agentbox",
   "timeout_secs": 60
 }
 ```
@@ -53,13 +53,13 @@ Asynchronously blocks until a new email arrives for the specified account addres
 Retrieve the most recent OTP code sent to an inbox:
 ```json
 {
-  "account_id": "agent@apocalypto.in"
+  "account_id": "agent@local.agentbox"
 }
 ```
 **Returns**:
 ```json
 {
-  "account_id": "agent@apocalypto.in",
+  "account_id": "agent@local.agentbox",
   "otp": "592819"
 }
 ```
@@ -69,7 +69,7 @@ Create a new virtual email inbox for the agent:
 ```json
 {
   "name": "research-bot",
-  "address": "research-bot@apocalypto.in"
+  "address": "research-bot@local.agentbox"
 }
 ```
 
@@ -77,7 +77,7 @@ Create a new virtual email inbox for the agent:
 List all incoming and outgoing messages with full body text, HTML, and timestamps:
 ```json
 {
-  "account_id": "agent@apocalypto.in"
+  "account_id": "agent@local.agentbox"
 }
 ```
 
@@ -85,7 +85,7 @@ List all incoming and outgoing messages with full body text, HTML, and timestamp
 Send an outbound email:
 ```json
 {
-  "account_id": "agent@apocalypto.in",
+  "account_id": "agent@local.agentbox",
   "to": "user@example.com",
   "subject": "Task Completed: Fixed auth.rs line 42",
   "body": "All unit tests passed. Deployment complete."
@@ -98,16 +98,16 @@ Send an outbound email:
 
 ### Example A: Completing a User Signup & 2FA Flow
 ```
-1. Call `create_agent_inbox` (or use primary `agent@apocalypto.in`).
+1. Call `create_agent_inbox` (or use primary `agent@local.agentbox`).
 2. Input the email into the website's registration form.
-3. Call `wait_for_email(account_id="agent@apocalypto.in", timeout_secs=45)`.
+3. Call `wait_for_email(account_id="agent@local.agentbox", timeout_secs=45)`.
 4. Extract `otp` from the response.
 5. Enter the OTP into the website and complete verification!
 ```
 
 ### Example B: Email-to-Agent Command Dispatch
 ```
-1. Agent monitors `agent@apocalypto.in` via `wait_for_email`.
+1. Agent monitors `agent@local.agentbox` via `wait_for_email`.
 2. User emails: "Fix bug in calculation logic".
 3. Agent reads instructions, modifies code, runs tests.
 4. Agent calls `send_agent_email` to reply back with confirmation.
