@@ -439,3 +439,182 @@ function escapeHtml(str) {
   div.innerText = str;
   return div.innerHTML;
 }
+
+// =========================================================================
+// 1-Click Connect AI Agents Wizard Functions
+// =========================================================================
+
+let detectedIntegrations = [];
+let availableIdentities = [];
+let isCreatingNewAgent = false;
+
+async function openConnectAgentsModal() {
+  const modal = document.getElementById("connect-agents-modal");
+  if (!modal) return;
+  modal.classList.add("open");
+  await detectIntegrations();
+  if (window.lucide) window.lucide.createIcons();
+}
+
+function closeConnectAgentsModal() {
+  const modal = document.getElementById("connect-agents-modal");
+  if (modal) modal.classList.remove("open");
+}
+
+async function detectIntegrations() {
+  const listEl = document.getElementById("frameworks-list");
+  const badgeEl = document.getElementById("detected-count-badge");
+  const selectEl = document.getElementById("agent-identity-select");
+  if (!listEl) return;
+
+  listEl.innerHTML = `<div class="p-4 text-center text-xs text-base-500 border border-base-800 rounded-xl bg-base-950 col-span-2">Scanning your computer for AI frameworks...</div>`;
+
+  try {
+    const res = await fetch("/v1/integrations/detect");
+    if (!res.ok) throw new Error("Failed to detect frameworks");
+    const data = await res.json();
+    detectedIntegrations = data.frameworks || [];
+    availableIdentities = data.identities || [];
+
+    const detectedCount = detectedIntegrations.filter(f => f.detected).length;
+    if (badgeEl) {
+      badgeEl.textContent = `${detectedCount} of ${detectedIntegrations.length} Detected`;
+    }
+
+    // Render Framework Cards
+    listEl.innerHTML = detectedIntegrations.map(fw => `
+      <label class="setup-card p-3.5 flex items-start gap-3 cursor-pointer rounded-xl border border-base-700 bg-base-850 hover:bg-base-800 transition-all ${fw.detected ? 'border-emerald-500/40 bg-emerald-500/[0.03]' : 'opacity-85'}">
+        <input type="checkbox" value="${fw.id}" ${fw.detected ? 'checked' : ''} class="email-check mt-0.5" id="fw-${fw.id}">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-white tracking-tight">${escapeHtml(fw.name)}</span>
+            <span class="text-[9px] font-mono px-2 py-0.5 rounded-full ${fw.detected ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold' : 'bg-base-700 text-base-400'}">${escapeHtml(fw.status)}</span>
+          </div>
+          <p class="text-[11px] text-base-400 mt-0.5 truncate">${escapeHtml(fw.description)}</p>
+          <span class="text-[10px] text-base-500 font-mono block mt-1 truncate">${escapeHtml(fw.config_path)}</span>
+        </div>
+      </label>
+    `).join("");
+
+    // Populate Identities Dropdown
+    if (selectEl) {
+      if (availableIdentities.length > 0) {
+        selectEl.innerHTML = availableIdentities.map(id => `
+          <option value="${id.id}">${escapeHtml(id.name)} (${escapeHtml(id.email_address)})</option>
+        `).join("") + `<option value="new">+ Create New Identity...</option>`;
+      } else {
+        selectEl.innerHTML = `
+          <option value="default">General Agent (agent@${window.location.hostname || 'apocalypto.in'})</option>
+          <option value="new">+ Create New Custom Identity...</option>
+        `;
+      }
+    }
+  } catch (err) {
+    listEl.innerHTML = `<div class="p-4 text-center text-xs text-red-400 border border-red-900/40 rounded-xl bg-red-950/20 col-span-2">Scan error: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function toggleNewAgentDrawer() {
+  const form = document.getElementById("new-identity-form");
+  const existing = document.getElementById("existing-identity-section");
+  const btn = document.getElementById("toggle-new-agent-btn");
+  if (!form) return;
+
+  isCreatingNewAgent = !isCreatingNewAgent;
+  if (isCreatingNewAgent) {
+    form.classList.remove("hidden");
+    existing.classList.add("hidden");
+    btn.innerHTML = `<i data-lucide="x" class="w-3 h-3"></i> Use Existing Identity`;
+  } else {
+    form.classList.add("hidden");
+    existing.classList.remove("hidden");
+    btn.innerHTML = `<i data-lucide="plus" class="w-3 h-3"></i> Create New Identity`;
+  }
+  if (window.lucide) window.lucide.createIcons();
+}
+
+async function submitConnectAgents() {
+  const submitBtn = document.getElementById("connect-submit-btn");
+  const resultsSection = document.getElementById("connect-results-section");
+  const resultsList = document.getElementById("connect-results-list");
+
+  const selectedFrameworks = Array.from(document.querySelectorAll("#frameworks-list input[type=checkbox]:checked"))
+    .map(cb => cb.value);
+
+  if (selectedFrameworks.length === 0) {
+    showToast("Please select at least one AI framework to connect.");
+    return;
+  }
+
+  let payload = {
+    frameworks: selectedFrameworks
+  };
+
+  if (isCreatingNewAgent) {
+    const name = document.getElementById("new-agent-name").value.trim();
+    if (!name) {
+      showToast("Please enter an Agent Name");
+      return;
+    }
+    const email = document.getElementById("new-agent-email").value.trim() || undefined;
+    const caps = Array.from(document.querySelectorAll("#new-agent-caps input[type=checkbox]:checked"))
+      .map(cb => cb.value);
+
+    payload.create_agent = {
+      name,
+      email,
+      capabilities: caps
+    };
+  } else {
+    const selectEl = document.getElementById("agent-identity-select");
+    const val = selectEl ? selectEl.value : null;
+    if (val === "new") {
+      toggleNewAgentDrawer();
+      return;
+    }
+    payload.agent_id = val && val !== "default" ? val : undefined;
+  }
+
+  submitBtn.disabled = true;
+  submitBtn.innerHTML = `<i data-lucide="loader" class="w-4 h-4 animate-spin"></i> Connecting...`;
+  if (window.lucide) window.lucide.createIcons();
+
+  resultsSection.classList.remove("hidden");
+  resultsList.innerHTML = `<div class="text-base-400 text-xs animate-pulse">Injecting MCP configuration into selected runtimes...</div>`;
+
+  try {
+    const res = await fetch("/v1/integrations/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) throw new Error("Failed to connect agents");
+    const data = await res.json();
+
+    resultsList.innerHTML = data.results.map(r => `
+      <div class="flex items-center justify-between p-2.5 rounded-lg bg-base-900 border border-base-800">
+        <div class="flex items-center gap-2">
+          <span class="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs">✓</span>
+          <div>
+            <span class="font-bold text-white text-xs">${escapeHtml(r.name)}</span>
+            <span class="text-base-500 text-[10px] block font-mono">${escapeHtml(r.path)}</span>
+          </div>
+        </div>
+        <span class="text-emerald-400 text-xs font-semibold">${escapeHtml(r.status)}</span>
+      </div>
+    `).join("") + `
+      <div class="mt-4 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-center space-y-1">
+        <h4 class="text-sm font-bold text-emerald-400">🎉 Your AI agents now have email.</h4>
+        <p class="text-xs text-base-300 font-mono">Assigned Identity: <span class="text-white font-semibold">${escapeHtml(data.agent_email)}</span></p>
+      </div>
+    `;
+
+    submitBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Connected!`;
+    showToast(`🎉 Connected ${data.results.length} AI Agents to ${data.agent_email}!`);
+  } catch (err) {
+    resultsList.innerHTML = `<div class="text-red-400 text-xs p-2">Error connecting: ${escapeHtml(err.message)}</div>`;
+    submitBtn.innerHTML = `<i data-lucide="zap" class="w-4 h-4"></i> Retry Connection`;
+    submitBtn.disabled = false;
+  }
+}

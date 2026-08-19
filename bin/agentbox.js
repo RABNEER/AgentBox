@@ -145,7 +145,43 @@ function runInit() {
     console.log('  [!] Cursor config skipped: ' + e.message);
   }
 
-  // 3. Antigravity IDE (mcp_config.json)
+  // 3. OpenClaw (~/.openclaw/mcp.json)
+  const openclawDir = path.join(homeDir, '.openclaw');
+  try {
+    if (!fs.existsSync(openclawDir)) fs.mkdirSync(openclawDir, { recursive: true });
+    const openclawFile = path.join(openclawDir, 'mcp.json');
+    let cfg = fs.existsSync(openclawFile) ? JSON.parse(fs.readFileSync(openclawFile, 'utf8')) : {};
+    cfg.mcpServers = cfg.mcpServers || {};
+    cfg.mcpServers.agentbox = {
+      command: mcpCommand,
+      args: mcpArgs
+    };
+    fs.writeFileSync(openclawFile, JSON.stringify(cfg, null, 2));
+    console.log('  [✓] Configured MCP in OpenClaw (~/.openclaw/mcp.json)');
+    installedCount++;
+  } catch (e) {
+    console.log('  [!] OpenClaw config skipped: ' + e.message);
+  }
+
+  // 4. Hermes (~/.hermes/mcp.json)
+  const hermesDir = path.join(homeDir, '.hermes');
+  try {
+    if (!fs.existsSync(hermesDir)) fs.mkdirSync(hermesDir, { recursive: true });
+    const hermesFile = path.join(hermesDir, 'mcp.json');
+    let cfg = fs.existsSync(hermesFile) ? JSON.parse(fs.readFileSync(hermesFile, 'utf8')) : {};
+    cfg.mcpServers = cfg.mcpServers || {};
+    cfg.mcpServers.agentbox = {
+      command: mcpCommand,
+      args: mcpArgs
+    };
+    fs.writeFileSync(hermesFile, JSON.stringify(cfg, null, 2));
+    console.log('  [✓] Configured MCP in Hermes (~/.hermes/mcp.json)');
+    installedCount++;
+  } catch (e) {
+    console.log('  [!] Hermes config skipped: ' + e.message);
+  }
+
+  // 5. Antigravity IDE (mcp_config.json)
   const antigravityConfigPath = path.join(homeDir, '.gemini', 'config', 'mcp_config.json');
   try {
     if (fs.existsSync(path.dirname(antigravityConfigPath))) {

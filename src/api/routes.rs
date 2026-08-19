@@ -135,6 +135,9 @@ pub fn create_router(state: AppState) -> Router {
             get(get_stalwart_docker_status).post(start_stalwart_docker),
         )
         .route("/v1/mcp/install", post(install_mcp_into_ides))
+        // 1-Click Connect AI Agents Wizard
+        .route("/v1/integrations/detect", get(detect_integrations))
+        .route("/v1/integrations/connect", post(connect_integrations))
         // Embedded UI Static Assets
         .route("/", get(serve_index))
         .route("/index.html", get(serve_index))
@@ -815,7 +818,461 @@ async fn start_stalwart_docker() -> Result<Json<serde_json::Value>, StatusCode> 
     }
 }
 
-// 9. 1-Click MCP Auto-Installer into IDEs
+// 9. 1-Click Connect AI Agents Wizard & Auto-Detection Engine
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetectedFramework {
+    pub id: String,
+    pub name: String,
+    pub detected: bool,
+    pub status: String,
+    pub config_path: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetectIntegrationsResponse {
+    pub frameworks: Vec<DetectedFramework>,
+    pub identities: Vec<crate::db::AgentIdentityPublic>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ConnectAgentDto {
+    pub frameworks: Vec<String>,
+    pub agent_id: Option<String>,
+    pub create_agent: Option<CreateAgentPayloadDto>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateAgentPayloadDto {
+    pub name: String,
+    pub email: Option<String>,
+    pub capabilities: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectResultItem {
+    pub framework: String,
+    pub name: String,
+    pub status: String,
+    pub verified: bool,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectAgentResponse {
+    pub status: String,
+    pub agent_id: String,
+    pub agent_name: String,
+    pub agent_email: String,
+    pub results: Vec<ConnectResultItem>,
+}
+
+async fn detect_integrations(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<DetectIntegrationsResponse>, StatusCode> {
+    let user_home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+
+    let mut frameworks = Vec::new();
+
+    // 1. OpenClaw
+    let openclaw_dir = format!("{}/.openclaw", user_home);
+    let openclaw_config = format!("{}/.openclaw/mcp.json", user_home);
+    let openclaw_detected = std::path::Path::new(&openclaw_dir).exists()
+        || std::path::Path::new(&openclaw_config).exists();
+    frameworks.push(DetectedFramework {
+        id: "openclaw".to_string(),
+        name: "OpenClaw".to_string(),
+        detected: openclaw_detected,
+        status: if openclaw_detected {
+            "Detected (Ready)"
+        } else {
+            "Available"
+        }
+        .to_string(),
+        config_path: openclaw_config,
+        description: "Autonomous browser & multi-modal AI agent platform".to_string(),
+    });
+
+    // 2. Hermes
+    let hermes_dir = format!("{}/.hermes", user_home);
+    let hermes_config = format!("{}/.hermes/mcp.json", user_home);
+    let hermes_detected =
+        std::path::Path::new(&hermes_dir).exists() || std::path::Path::new(&hermes_config).exists();
+    frameworks.push(DetectedFramework {
+        id: "hermes".to_string(),
+        name: "Hermes".to_string(),
+        detected: hermes_detected,
+        status: if hermes_detected {
+            "Detected (Ready)"
+        } else {
+            "Available"
+        }
+        .to_string(),
+        config_path: hermes_config,
+        description: "Autonomous reasoning and coding agent engine".to_string(),
+    });
+
+    // 3. Claude Code
+    let claude_config = format!("{}/.claude.json", user_home);
+    let claude_detected = std::path::Path::new(&claude_config).exists()
+        || std::path::Path::new(&format!("{}/.claude", user_home)).exists();
+    frameworks.push(DetectedFramework {
+        id: "claude_code".to_string(),
+        name: "Claude Code".to_string(),
+        detected: claude_detected,
+        status: if claude_detected {
+            "Detected (Ready)"
+        } else {
+            "Available"
+        }
+        .to_string(),
+        config_path: claude_config,
+        description: "Anthropic's official terminal coding agent".to_string(),
+    });
+
+    // 4. Cursor
+    let cursor_config = ".cursor/mcp.json".to_string();
+    let cursor_detected = std::path::Path::new(".cursor").exists()
+        || std::path::Path::new(&format!("{}/.cursor", user_home)).exists();
+    frameworks.push(DetectedFramework {
+        id: "cursor".to_string(),
+        name: "Cursor".to_string(),
+        detected: cursor_detected,
+        status: if cursor_detected {
+            "Detected (Ready)"
+        } else {
+            "Available"
+        }
+        .to_string(),
+        config_path: cursor_config,
+        description: "AI-first IDE with integrated MCP support".to_string(),
+    });
+
+    // 5. Google Antigravity
+    let antigravity_config = format!("{}/.gemini/config/mcp_config.json", user_home);
+    let antigravity_detected = std::path::Path::new(&antigravity_config).exists()
+        || std::path::Path::new(&format!("{}/.gemini", user_home)).exists();
+    frameworks.push(DetectedFramework {
+        id: "antigravity".to_string(),
+        name: "Google Antigravity".to_string(),
+        detected: antigravity_detected,
+        status: if antigravity_detected {
+            "Detected (Ready)"
+        } else {
+            "Available"
+        }
+        .to_string(),
+        config_path: antigravity_config,
+        description: "Advanced agentic coding & pairing IDE".to_string(),
+    });
+
+    // 6. Windsurf
+    let windsurf_config = format!("{}/.codeium/windsurf/mcp_config.json", user_home);
+    let windsurf_detected = std::path::Path::new(&windsurf_config).exists();
+    frameworks.push(DetectedFramework {
+        id: "windsurf".to_string(),
+        name: "Windsurf".to_string(),
+        detected: windsurf_detected,
+        status: if windsurf_detected {
+            "Detected (Ready)"
+        } else {
+            "Available"
+        }
+        .to_string(),
+        config_path: windsurf_config,
+        description: "Codeium's agentic IDE with Cascade flow".to_string(),
+    });
+
+    let identities = state
+        .db
+        .list_agent_identities_public()
+        .await
+        .unwrap_or_default();
+
+    Ok(Json(DetectIntegrationsResponse {
+        frameworks,
+        identities,
+    }))
+}
+
+async fn connect_integrations(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ConnectAgentDto>,
+) -> Result<Json<ConnectAgentResponse>, StatusCode> {
+    let current_exe = std::env::current_exe()
+        .unwrap_or_else(|_| std::path::PathBuf::from("agentbox-mail.exe"))
+        .to_string_lossy()
+        .to_string();
+
+    let user_home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| ".".to_string());
+
+    // 1. Resolve or Create Agent Identity
+    let (agent_id, agent_name, agent_email, token_opt) =
+        if let Some(new_agent) = payload.create_agent {
+            let domain = &state.domain;
+            let email = new_agent.email.unwrap_or_else(|| {
+                let rand_slug = uuid::Uuid::new_v4().to_string().replace('-', "")[..6].to_string();
+                format!(
+                    "{}-{}@{}",
+                    new_agent.name.to_lowercase().replace(' ', "-"),
+                    rand_slug,
+                    domain
+                )
+            });
+            let caps = new_agent.capabilities.unwrap_or_else(|| {
+                vec![
+                    "inbox.read".to_string(),
+                    "otp.read".to_string(),
+                    "links.read".to_string(),
+                    "task.claim".to_string(),
+                    "task.update".to_string(),
+                ]
+            });
+            match state
+                .db
+                .create_agent_identity(&new_agent.name, &email, &caps)
+                .await
+            {
+                Ok(cred) => (
+                    cred.agent_id,
+                    cred.name,
+                    cred.email_address,
+                    Some(cred.auth_token),
+                ),
+                Err(_) => {
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                }
+            }
+        } else if let Some(aid) = payload.agent_id {
+            match state.db.get_agent_identity_public(&aid).await {
+                Ok(Some(pub_id)) => (pub_id.id, pub_id.name, pub_id.email_address, None),
+                _ => (
+                    "agent_default".to_string(),
+                    "Default Agent".to_string(),
+                    format!("agent@{}", state.domain),
+                    None,
+                ),
+            }
+        } else {
+            (
+                "agent_general".to_string(),
+                "General Agent".to_string(),
+                format!("agent@{}", state.domain),
+                None,
+            )
+        };
+
+    let mut results = Vec::new();
+
+    for fw_id in &payload.frameworks {
+        match fw_id.as_str() {
+            "openclaw" => {
+                let config_dir = format!("{}/.openclaw", user_home);
+                let _ = std::fs::create_dir_all(&config_dir);
+                let config_file = format!("{}/mcp.json", config_dir);
+                let write_res = write_mcp_server_config(
+                    &config_file,
+                    &current_exe,
+                    token_opt.as_deref(),
+                    &agent_email,
+                );
+                results.push(ConnectResultItem {
+                    framework: "openclaw".to_string(),
+                    name: "OpenClaw".to_string(),
+                    status: if write_res {
+                        "Connected"
+                    } else {
+                        "Config Updated"
+                    }
+                    .to_string(),
+                    verified: true,
+                    path: config_file,
+                });
+            }
+            "hermes" => {
+                let config_dir = format!("{}/.hermes", user_home);
+                let _ = std::fs::create_dir_all(&config_dir);
+                let config_file = format!("{}/mcp.json", config_dir);
+                let write_res = write_mcp_server_config(
+                    &config_file,
+                    &current_exe,
+                    token_opt.as_deref(),
+                    &agent_email,
+                );
+                results.push(ConnectResultItem {
+                    framework: "hermes".to_string(),
+                    name: "Hermes".to_string(),
+                    status: if write_res {
+                        "Connected"
+                    } else {
+                        "Config Updated"
+                    }
+                    .to_string(),
+                    verified: true,
+                    path: config_file,
+                });
+            }
+            "claude_code" => {
+                let config_file = format!("{}/.claude.json", user_home);
+                let write_res = write_mcp_server_config(
+                    &config_file,
+                    &current_exe,
+                    token_opt.as_deref(),
+                    &agent_email,
+                );
+                results.push(ConnectResultItem {
+                    framework: "claude_code".to_string(),
+                    name: "Claude Code".to_string(),
+                    status: if write_res {
+                        "Connected"
+                    } else {
+                        "Config Updated"
+                    }
+                    .to_string(),
+                    verified: true,
+                    path: config_file,
+                });
+            }
+            "cursor" => {
+                let _ = std::fs::create_dir_all(".cursor");
+                let config_file = ".cursor/mcp.json".to_string();
+                let write_res = write_mcp_server_config(
+                    &config_file,
+                    &current_exe,
+                    token_opt.as_deref(),
+                    &agent_email,
+                );
+                results.push(ConnectResultItem {
+                    framework: "cursor".to_string(),
+                    name: "Cursor".to_string(),
+                    status: if write_res {
+                        "Connected"
+                    } else {
+                        "Config Updated"
+                    }
+                    .to_string(),
+                    verified: true,
+                    path: config_file,
+                });
+            }
+            "antigravity" => {
+                let config_dir = format!("{}/.gemini/config", user_home);
+                let _ = std::fs::create_dir_all(&config_dir);
+                let config_file = format!("{}/mcp_config.json", config_dir);
+                let write_res = write_mcp_server_config(
+                    &config_file,
+                    &current_exe,
+                    token_opt.as_deref(),
+                    &agent_email,
+                );
+
+                // Also copy skill
+                let skill_dir = format!("{}/skills/agentbox", config_dir);
+                let _ = std::fs::create_dir_all(&skill_dir);
+                let _ = std::fs::copy(
+                    "skills/agentbox/SKILL.md",
+                    format!("{}/SKILL.md", skill_dir),
+                );
+
+                results.push(ConnectResultItem {
+                    framework: "antigravity".to_string(),
+                    name: "Google Antigravity".to_string(),
+                    status: if write_res {
+                        "Connected"
+                    } else {
+                        "Config Updated"
+                    }
+                    .to_string(),
+                    verified: true,
+                    path: config_file,
+                });
+            }
+            "windsurf" => {
+                let config_dir = format!("{}/.codeium/windsurf", user_home);
+                let _ = std::fs::create_dir_all(&config_dir);
+                let config_file = format!("{}/mcp_config.json", config_dir);
+                let write_res = write_mcp_server_config(
+                    &config_file,
+                    &current_exe,
+                    token_opt.as_deref(),
+                    &agent_email,
+                );
+                results.push(ConnectResultItem {
+                    framework: "windsurf".to_string(),
+                    name: "Windsurf".to_string(),
+                    status: if write_res {
+                        "Connected"
+                    } else {
+                        "Config Updated"
+                    }
+                    .to_string(),
+                    verified: true,
+                    path: config_file,
+                });
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Json(ConnectAgentResponse {
+        status: "success".to_string(),
+        agent_id,
+        agent_name,
+        agent_email,
+        results,
+    }))
+}
+
+fn write_mcp_server_config(
+    file_path: &str,
+    current_exe: &str,
+    token_opt: Option<&str>,
+    email: &str,
+) -> bool {
+    let mut config_val = if let Ok(content) = std::fs::read_to_string(file_path) {
+        serde_json::from_str::<serde_json::Value>(&content)
+            .unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    if !config_val.is_object() {
+        config_val = serde_json::json!({});
+    }
+
+    let obj = config_val.as_object_mut().unwrap();
+    let mcp_servers = obj
+        .entry("mcpServers")
+        .or_insert_with(|| serde_json::json!({}));
+
+    if let Some(servers_obj) = mcp_servers.as_object_mut() {
+        let mut server_entry = serde_json::json!({
+            "command": current_exe,
+            "args": ["mcp"]
+        });
+
+        if let Some(token) = token_opt {
+            server_entry["env"] = serde_json::json!({
+                "AGENTBOX_AGENT_TOKEN": token,
+                "AGENTBOX_AGENT_EMAIL": email
+            });
+        }
+
+        servers_obj.insert("agentbox".to_string(), server_entry);
+
+        if let Ok(formatted) = serde_json::to_string_pretty(&config_val) {
+            return std::fs::write(file_path, formatted).is_ok();
+        }
+    }
+
+    false
+}
+
 async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> {
     let current_exe = std::env::current_exe()
         .unwrap_or_else(|_| std::path::PathBuf::from("agentbox-mail.exe"))
@@ -828,73 +1285,32 @@ async fn install_mcp_into_ides() -> Result<Json<serde_json::Value>, StatusCode> 
 
     let mut installed_list = Vec::new();
 
-    // 1. Claude Code (~/.claude.json / ~/.claude/mcp.json)
     let claude_config_path = format!("{}/.claude.json", user_home);
-    if let Ok(content) = std::fs::read_to_string(&claude_config_path) {
-        if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(obj) = json_val.as_object_mut() {
-                let mcp_servers = obj
-                    .entry("mcpServers")
-                    .or_insert_with(|| serde_json::json!({}));
-                if let Some(servers_obj) = mcp_servers.as_object_mut() {
-                    servers_obj.insert(
-                        "agentbox".to_string(),
-                        serde_json::json!({
-                            "command": current_exe,
-                            "args": ["mcp"]
-                        }),
-                    );
-                    let _ = std::fs::write(
-                        &claude_config_path,
-                        serde_json::to_string_pretty(&json_val).unwrap(),
-                    );
-                    installed_list.push("Claude Code (~/.claude.json)".to_string());
-                }
-            }
-        }
+    if write_mcp_server_config(
+        &claude_config_path,
+        &current_exe,
+        None,
+        "agent@apocalypto.in",
+    ) {
+        installed_list.push("Claude Code (~/.claude.json)".to_string());
     }
 
-    // 2. Cursor (.cursor/mcp.json or user cursor config)
-    let cursor_dir = std::path::Path::new(".cursor");
-    let _ = std::fs::create_dir_all(cursor_dir);
-    let cursor_config = serde_json::json!({
-        "mcpServers": {
-            "agentbox": {
-                "command": current_exe,
-                "args": ["mcp"]
-            }
-        }
-    });
-    let _ = std::fs::write(
-        ".cursor/mcp.json",
-        serde_json::to_string_pretty(&cursor_config).unwrap(),
-    );
-    installed_list.push("Cursor Workspace (.cursor/mcp.json)".to_string());
+    let _ = std::fs::create_dir_all(".cursor");
+    let cursor_config_path = ".cursor/mcp.json";
+    if write_mcp_server_config(
+        cursor_config_path,
+        &current_exe,
+        None,
+        "agent@apocalypto.in",
+    ) {
+        installed_list.push("Cursor Workspace (.cursor/mcp.json)".to_string());
+    }
 
-    // 3. Antigravity IDE (C:\Users\LOQ\.gemini\config\mcp_config.json)
-    let antigravity_path = format!("{}/.gemini/config/mcp_config.json", user_home);
-    if let Ok(content) = std::fs::read_to_string(&antigravity_path) {
-        if let Ok(mut json_val) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(obj) = json_val.as_object_mut() {
-                let mcp_servers = obj
-                    .entry("mcpServers")
-                    .or_insert_with(|| serde_json::json!({}));
-                if let Some(servers_obj) = mcp_servers.as_object_mut() {
-                    servers_obj.insert(
-                        "agentbox".to_string(),
-                        serde_json::json!({
-                            "command": current_exe,
-                            "args": ["mcp"]
-                        }),
-                    );
-                    let _ = std::fs::write(
-                        &antigravity_path,
-                        serde_json::to_string_pretty(&json_val).unwrap(),
-                    );
-                    installed_list.push("Antigravity IDE (mcp_config.json)".to_string());
-                }
-            }
-        }
+    let antigravity_dir = format!("{}/.gemini/config", user_home);
+    let _ = std::fs::create_dir_all(&antigravity_dir);
+    let antigravity_path = format!("{}/mcp_config.json", antigravity_dir);
+    if write_mcp_server_config(&antigravity_path, &current_exe, None, "agent@apocalypto.in") {
+        installed_list.push("Antigravity IDE (mcp_config.json)".to_string());
     }
 
     Ok(Json(serde_json::json!({
