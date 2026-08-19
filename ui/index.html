@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgentBox Mail — Autonomous AI Mailbox (v2.0)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        base: {
+                            950: '#000000',
+                            900: '#09090b',
+                            850: '#121214',
+                            800: '#18181b',
+                            750: '#202024',
+                            700: '#27272a',
+                            600: '#3f3f46',
+                            500: '#71717a',
+                            400: '#a1a1aa',
+                            300: '#d4d4d8',
+                            200: '#e4e4e7',
+                            100: '#f4f4f5',
+                            50: '#ffffff',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #000000;
+            color: #f4f4f5;
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3f3f46; }
+
+        /* Selection */
+        ::selection { background: #ffffff; color: #000000; }
+
+        /* Custom monochrome checkbox */
+        .email-check {
+            appearance: none;
+            width: 17px;
+            height: 17px;
+            border: 1.5px solid #3f3f46;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            position: relative;
+            flex-shrink: 0;
+            background: #09090b;
+        }
+
+        .email-check:hover {
+            border-color: #71717a;
+            background: #18181b;
+        }
+
+        .email-check:checked {
+            background: #ffffff;
+            border-color: #ffffff;
+        }
+
+        .email-check:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 2px;
+            width: 4px;
+            height: 8px;
+            border: solid #000000;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        /* Email row */
+        .email-row {
+            transition: all 0.15s ease;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .email-row:hover {
+            background: #121214;
+        }
+
+        .email-row.active {
+            background: #18181b;
+        }
+
+        .email-row.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 6px;
+            bottom: 6px;
+            width: 3px;
+            background: #ffffff;
+            border-radius: 0 2px 2px 0;
+        }
+
+        .email-row .row-actions {
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+
+        .email-row:hover .row-actions {
+            opacity: 1;
+        }
+
+        /* Unread indicator */
+        .unread-dot {
+            width: 7px;
+            height: 7px;
+            background: #ffffff;
+            border-radius: 50%;
+            flex-shrink: 0;
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        /* Avatar */
+        .avatar {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 13px;
+            flex-shrink: 0;
+            letter-spacing: -0.02em;
+            background: #18181b;
+            color: #ffffff;
+            border: 1px solid #27272a;
+        }
+
+        /* Label pill */
+        .label-pill {
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 4px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            background: #18181b;
+            color: #d4d4d8;
+            border: 1px solid #27272a;
+        }
+
+        /* Sidebar item */
+        .sidebar-item {
+            transition: all 0.15s ease;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .sidebar-item:hover {
+            background: #121214;
+            color: #ffffff;
+        }
+
+        .sidebar-item.active {
+            background: #18181b;
+            color: #ffffff;
+            border: 1px solid #27272a;
+        }
+
+        .sidebar-item.active .sidebar-count {
+            background: #ffffff;
+            color: #000000;
+        }
+
+        /* Compose button */
+        .compose-btn {
+            background: #ffffff;
+            color: #000000;
+            transition: all 0.15s ease;
+            box-shadow: 0 2px 10px rgba(255, 255, 255, 0.15);
+        }
+
+        .compose-btn:hover {
+            background: #e4e4e7;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(255, 255, 255, 0.25);
+        }
+
+        .compose-btn:active {
+            transform: translateY(0);
+        }
+
+        /* Action button */
+        .action-btn {
+            transition: all 0.15s ease;
+            border-radius: 6px;
+        }
+
+        .action-btn:hover {
+            background: #27272a;
+            color: #ffffff;
+        }
+
+        .action-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* Search */
+        .search-box {
+            transition: all 0.2s ease;
+        }
+
+        .search-box:focus-within {
+            background: #121214;
+            border-color: #52525b;
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.1);
+        }
+
+        /* Modal */
+        .compose-modal {
+            transform: translateY(20px) scale(0.98);
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .compose-modal.open {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Toast */
+        .toast {
+            transform: translateY(20px);
+            opacity: 0;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Keyboard shortcut */
+        .kbd {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            padding: 1px 5px;
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 4px;
+            color: #a1a1aa;
+        }
+
+        /* OTP Hero Badge */
+        .otp-banner {
+            background: #09090b;
+            border: 1px solid #27272a;
+            border-radius: 12px;
+            padding: 14px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+            animation: slideDown 0.25s ease forwards;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .otp-code-text {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            color: #ffffff;
+        }
+
+        /* Setup Card */
+        .setup-card {
+            background: #0c0c0e;
+            border: 1.5px solid #27272a;
+            border-radius: 14px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+        }
+
+        .setup-card:hover {
+            border-color: #52525b;
+            background: #141417;
+            transform: translateY(-2px);
+        }
+
+        .setup-card.selected {
+            border-color: #ffffff;
+            background: #18181b;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Notification -->
+    <div id="toast" class="toast fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-base-900 border border-base-700 rounded-xl px-5 py-3 flex items-center gap-3 shadow-2xl">
+        <i data-lucide="check" class="w-4 h-4 text-white"></i>
+        <span class="text-sm text-base-100 font-medium" id="toast-message">Action completed</span>
+    </div>
+
+    <!-- IN-DASHBOARD SETUP WIZARD MODAL (Update 2.0) -->
+    <div id="setup-modal" class="compose-modal fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/85 backdrop-blur-md" onclick="closeSetupWizard()"></div>
+        <div class="relative w-full max-w-2xl bg-base-900 border border-base-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-base-800 bg-base-950">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
+                        <i data-lucide="sparkles" class="w-4 h-4 text-black"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-white tracking-tight">AgentBox 2.0 Setup Wizard</h3>
+                        <p class="text-xs text-base-400" id="wizard-step-indicator">Step 1 of 3 — Mailbox Type</p>
+                    </div>
+                </div>
+                <button onclick="closeSetupWizard()" class="action-btn p-2 text-base-400 hover:text-white">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Wizard Body -->
+            <div class="p-6 overflow-y-auto flex-1 space-y-6" id="wizard-content">
+                <!-- STEP 1: The Initial Question -->
+                <div id="step-1" class="space-y-4">
+                    <div class="text-center max-w-md mx-auto mb-6">
+                        <h4 class="text-lg font-bold text-white">Do you have an existing Mailbox or Domain?</h4>
+                        <p class="text-xs text-base-400 mt-1">Choose how your AI agents will receive 2FA verification codes and send emails.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Option A: Yes -->
+                        <div class="setup-card p-5 space-y-3" onclick="selectMailboxChoice('yes')">
+                            <div class="w-10 h-10 rounded-xl bg-base-800 border border-base-700 flex items-center justify-center text-white">
+                                <i data-lucide="mail-check" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h5 class="text-sm font-bold text-white">Yes, I have a Mailbox</h5>
+                                <p class="text-xs text-base-400 mt-1 leading-relaxed">Hostinger, Titan, Google Workspace, Microsoft 365, or any Custom IMAP/SMTP server.</p>
+                            </div>
+                            <div class="pt-2 flex items-center gap-1.5 text-xs text-white font-medium">
+                                <span>Connect Mailbox</span>
+                                <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                            </div>
+                        </div>
+
+                        <!-- Option B: No (Stalwart) -->
+                        <div class="setup-card p-5 space-y-3" onclick="selectMailboxChoice('no')">
+                            <div class="w-10 h-10 rounded-xl bg-base-800 border border-base-700 flex items-center justify-center text-white">
+                                <i data-lucide="server" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h5 class="text-sm font-bold text-white">No, I need a Mail Server</h5>
+                                <p class="text-xs text-base-400 mt-1 leading-relaxed">Set up free, self-hosted Stalwart Mail Server on your machine via Docker (Zero cost).</p>
+                            </div>
+                            <div class="pt-2 flex items-center gap-1.5 text-xs text-white font-medium">
+                                <span>Setup Stalwart Server</span>
+                                <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 2A: Connect Existing Mailbox (Hostinger / Titan / IMAP) -->
+                <div id="step-2a" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-bold text-white">Connect Your Mailbox</h4>
+                            <p class="text-xs text-base-400">Select your provider preset or enter custom IMAP/SMTP credentials.</p>
+                        </div>
+                        <button onclick="goToStep(1)" class="text-xs text-base-400 hover:text-white flex items-center gap-1">
+                            <i data-lucide="arrow-left" class="w-3 h-3"></i> Back
+                        </button>
+                    </div>
+
+                    <!-- Provider Presets -->
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="applyProviderPreset('hostinger')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-base-800 hover:bg-base-700 text-white border border-base-700 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span> Hostinger Mail
+                        </button>
+                        <button type="button" onclick="applyProviderPreset('titan')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-base-800 hover:bg-base-700 text-white border border-base-700 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span> Titan Mail
+                        </button>
+                        <button type="button" onclick="applyProviderPreset('google')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-base-800 hover:bg-base-700 text-white border border-base-700 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-red-400"></span> Google Workspace
+                        </button>
+                        <button type="button" onclick="applyProviderPreset('custom')" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-base-800 hover:bg-base-700 text-white border border-base-700 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-zinc-400"></span> Custom IMAP
+                        </button>
+                    </div>
+
+                    <!-- Credential Fields -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        <div class="space-y-1">
+                            <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Domain</label>
+                            <input type="text" id="cfg-domain" value="apocalypto.in" placeholder="yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Login Email Address</label>
+                            <input type="email" id="cfg-user" value="hello@apocalypto.in" placeholder="user@yourdomain.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                        </div>
+                        <div class="space-y-1 sm:col-span-2">
+                            <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Password / App Password</label>
+                            <input type="password" id="cfg-pass" placeholder="••••••••••••" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">IMAP Host & Port</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="cfg-imap-host" value="imap.hostinger.com" class="flex-1 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                                <input type="number" id="cfg-imap-port" value="993" class="w-20 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono text-center">
+                            </div>
+                        </div>
+                        <div class="space-y-1">
+                            <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Outbound SMTP Host & Port</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="cfg-smtp-host" value="smtp.hostinger.com" class="flex-1 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                                <input type="number" id="cfg-smtp-port" value="587" class="w-20 bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono text-center">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Test Connection Live Button & Feedback -->
+                    <div class="pt-2">
+                        <button type="button" onclick="testLiveConnection()" id="test-conn-btn" class="w-full bg-base-800 hover:bg-base-750 border border-base-600 text-white font-semibold text-xs py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all">
+                            <i data-lucide="activity" class="w-4 h-4 text-white"></i>
+                            <span>⚡ Test Connection Live</span>
+                        </button>
+                        <div id="test-conn-result" class="mt-2 text-xs font-mono hidden p-3 rounded-lg border"></div>
+                    </div>
+                </div>
+
+                <!-- STEP 2B: Stalwart Mail Server Guide -->
+                <div id="step-2b" class="space-y-4 hidden">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-sm font-bold text-white">Setup Stalwart Mail Server (Local & Free)</h4>
+                            <p class="text-xs text-base-400">Run Stalwart in Docker to get a complete private mail server with zero cloud dependencies.</p>
+                        </div>
+                        <button onclick="goToStep(1)" class="text-xs text-base-400 hover:text-white flex items-center gap-1">
+                            <i data-lucide="arrow-left" class="w-3 h-3"></i> Back
+                        </button>
+                    </div>
+
+                    <div class="bg-base-950 border border-base-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <span class="text-xs font-mono text-base-300">1. Run with Docker</span>
+                            <button onclick="copyDockerCommand()" class="text-xs text-white bg-base-800 hover:bg-base-700 px-2.5 py-1 rounded border border-base-700 flex items-center gap-1">
+                                <i data-lucide="copy" class="w-3 h-3"></i> Copy Command
+                            </button>
+                        </div>
+                        <div class="bg-base-900 border border-base-800 p-3 rounded-lg font-mono text-xs text-base-300 overflow-x-auto select-all" id="docker-cmd-text">
+                            docker run -d --name stalwart -p 25:25 -p 465:465 -p 587:587 -p 993:993 -p 8080:8080 stalwartlabs/mail-server
+                        </div>
+                        <div class="flex items-center gap-3 pt-1">
+                            <button onclick="startDockerContainer()" class="compose-btn text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5">
+                                <i data-lucide="play" class="w-3.5 h-3.5"></i> Launch in Docker
+                            </button>
+                            <a href="http://localhost:8080" target="_blank" class="text-xs text-base-300 hover:text-white bg-base-800 border border-base-700 px-3 py-2 rounded-lg flex items-center gap-1">
+                                <i data-lucide="external-link" class="w-3.5 h-3.5"></i> Admin UI (:8080)
+                            </a>
+                            <button onclick="useLocalhostStalwart()" class="text-xs text-white bg-base-800 hover:bg-base-700 border border-base-700 px-3 py-2 rounded-lg">
+                                ⚡ Auto-Fill Localhost
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STEP 3: Primary Agent Identity & 1-Click MCP Auto-Installer -->
+                <div id="step-3" class="space-y-4 hidden">
+                    <div>
+                        <h4 class="text-sm font-bold text-white">Agent Identity & 1-Click MCP Installer</h4>
+                        <p class="text-xs text-base-400">Configure your primary agent address and auto-register AgentBox in your AI IDEs.</p>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label class="text-[11px] font-semibold text-base-400 uppercase tracking-wider block">Primary Agent Address</label>
+                        <input type="email" id="cfg-primary-email" value="agent@apocalypto.in" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-white font-mono">
+                    </div>
+
+                    <!-- 1-Click MCP Auto-Installer Box -->
+                    <div class="bg-base-950 border border-base-800 rounded-xl p-4 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <h5 class="text-xs font-bold text-white">⚡ Auto-Register MCP Server in AI Tools</h5>
+                                <p class="text-[11px] text-base-400">Writes MCP configs and installs the AgentBox AI Skill automatically.</p>
+                            </div>
+                            <button type="button" onclick="autoInstallMcpNow()" id="mcp-install-btn" class="text-xs font-bold text-black bg-white hover:bg-base-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all">
+                                <i data-lucide="cpu" class="w-3.5 h-3.5"></i> 1-Click Install
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                            <label class="flex items-center gap-2 text-xs text-base-300">
+                                <input type="checkbox" checked id="inst-claude" class="email-check"> Claude Code
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-base-300">
+                                <input type="checkbox" checked id="inst-cursor" class="email-check"> Cursor
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-base-300">
+                                <input type="checkbox" checked id="inst-antigravity" class="email-check"> Antigravity
+                            </label>
+                            <label class="flex items-center gap-2 text-xs text-base-300">
+                                <input type="checkbox" checked id="inst-skill" class="email-check"> AI Skill
+                            </label>
+                        </div>
+                        <div id="mcp-install-result" class="text-[11px] font-mono text-emerald-400 hidden pt-1"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Navigation -->
+            <div class="flex items-center justify-between px-6 py-4 border-t border-base-800 bg-base-950">
+                <button type="button" onclick="closeSetupWizard()" class="px-4 py-2 text-xs text-base-400 hover:text-white">Cancel</button>
+                <div class="flex items-center gap-3">
+                    <button type="button" id="wizard-prev-btn" onclick="wizardBack()" class="px-4 py-2 text-xs font-semibold text-base-300 hover:text-white hidden">Back</button>
+                    <button type="button" id="wizard-next-btn" onclick="wizardNext()" class="compose-btn text-xs font-bold px-6 py-2.5 rounded-xl flex items-center gap-2">
+                        <span>Continue</span>
+                        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Compose Modal -->
+    <div id="compose-modal" class="compose-modal fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeCompose()"></div>
+        <div class="relative w-full max-w-2xl bg-base-900 border border-base-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-base-800">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="edit-3" class="w-4 h-4 text-base-300"></i>
+                    <h3 class="text-base font-semibold text-base-50">New message</h3>
+                </div>
+                <div class="flex items-center gap-1">
+                    <button onclick="closeCompose()" class="action-btn p-2 text-base-400 hover:text-white">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="flex items-center gap-3">
+                    <label class="text-sm font-medium text-base-400 w-14">From</label>
+                    <span id="compose-from-address" class="text-sm font-mono text-base-200">agent@agentbox.io</span>
+                </div>
+                <div class="flex items-center gap-3 border-t border-base-800 pt-3">
+                    <label class="text-sm font-medium text-base-400 w-14">To</label>
+                    <input type="email" id="compose-to" placeholder="recipient@example.com" class="flex-1 bg-transparent text-sm text-base-50 placeholder-base-600 outline-none py-1">
+                </div>
+                <div class="flex items-center gap-3 border-t border-base-800 pt-3">
+                    <label class="text-sm font-medium text-base-400 w-14">Subject</label>
+                    <input type="text" id="compose-subject" placeholder="Email subject" class="flex-1 bg-transparent text-sm text-base-50 placeholder-base-600 outline-none py-1">
+                </div>
+                <div class="border-t border-base-800 pt-3">
+                    <textarea id="compose-body" rows="7" placeholder="Write your message..." class="w-full bg-transparent text-sm text-base-100 placeholder-base-600 outline-none resize-none leading-relaxed"></textarea>
+                </div>
+            </div>
+            <div class="flex items-center justify-between px-6 py-4 border-t border-base-800 bg-base-850">
+                <div class="flex items-center gap-2">
+                    <button onclick="submitCompose()" class="compose-btn text-sm font-semibold px-6 py-2.5 rounded-lg flex items-center gap-2">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        Send Email
+                    </button>
+                </div>
+                <button onclick="closeCompose()" class="action-btn p-2 text-base-400 hover:text-white" title="Discard">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Simulate Inbound Email Modal -->
+    <div id="simulate-modal" class="compose-modal fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" onclick="closeSimulate()"></div>
+        <div class="relative w-full max-w-xl bg-base-900 border border-base-700 rounded-2xl shadow-2xl overflow-hidden">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-base-800">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="zap" class="w-4 h-4 text-white"></i>
+                    <h3 class="text-base font-semibold text-base-50">Simulate Inbound Email</h3>
+                </div>
+                <button onclick="closeSimulate()" class="action-btn p-2 text-base-400 hover:text-white">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="text-xs font-semibold text-base-400 uppercase tracking-wider block mb-2">Preset Templates</label>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" onclick="loadSimPreset('github')" class="text-xs bg-base-800 hover:bg-base-700 text-base-200 border border-base-700 px-3 py-1.5 rounded-md font-medium">GitHub OTP</button>
+                        <button type="button" onclick="loadSimPreset('aws')" class="text-xs bg-base-800 hover:bg-base-700 text-base-200 border border-base-700 px-3 py-1.5 rounded-md font-medium">AWS Verify</button>
+                        <button type="button" onclick="loadSimPreset('slack')" class="text-xs bg-base-800 hover:bg-base-700 text-base-200 border border-base-700 px-3 py-1.5 rounded-md font-medium">Slack Magic Link</button>
+                        <button type="button" onclick="loadSimPreset('stripe')" class="text-xs bg-base-800 hover:bg-base-700 text-base-200 border border-base-700 px-3 py-1.5 rounded-md font-medium">Stripe Invoice</button>
+                    </div>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-base-400 uppercase tracking-wider block">Sender</label>
+                    <input type="text" id="sim-from" value="no-reply@github.com" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-sm text-base-100 outline-none focus:border-white">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-base-400 uppercase tracking-wider block">Subject</label>
+                    <input type="text" id="sim-subject" value="[GitHub] Please verify your device - 849201" class="w-full bg-base-800 border border-base-700 rounded-lg px-3 py-2 text-sm text-base-100 outline-none focus:border-white">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-xs font-semibold text-base-400 uppercase tracking-wider block">Email Body</label>
+                    <textarea id="sim-body" rows="5" class="w-full bg-base-800 border border-base-700 rounded-lg p-3 text-sm text-base-200 outline-none focus:border-white font-mono"></textarea>
+                </div>
+            </div>
+            <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-base-800 bg-base-850">
+                <button onclick="closeSimulate()" class="px-4 py-2 text-sm text-base-400 hover:text-white">Cancel</button>
+                <button onclick="submitSimulate()" class="compose-btn text-sm font-semibold px-5 py-2 rounded-lg flex items-center gap-2">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    Ingest & Parse
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Layout -->
+    <div class="flex h-screen">
+        <!-- Sidebar -->
+        <aside class="w-64 flex-shrink-0 border-r border-base-800 flex flex-col bg-base-950">
+            <!-- Brand -->
+            <div class="flex items-center justify-between px-5 h-16 border-b border-base-800 flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center">
+                        <i data-lucide="terminal" class="w-4 h-4 text-black"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-sm text-white tracking-tight block leading-tight">AgentBox<span class="text-base-400 font-normal">.Mail</span></span>
+                        <span class="text-[10px] font-mono text-base-500 flex items-center gap-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> v2.0 Live Sync
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Compose & Simulate Buttons -->
+            <div class="px-4 pt-4 pb-2 space-y-2">
+                <button onclick="openCompose()" class="compose-btn w-full flex items-center justify-center gap-2 text-sm font-bold text-black py-2.5 rounded-xl">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    Compose Email
+                </button>
+                <button onclick="openSimulate()" class="w-full flex items-center justify-center gap-2 text-xs font-semibold text-base-200 bg-base-900 hover:bg-base-850 border border-base-700 py-2 rounded-lg transition-all">
+                    <i data-lucide="zap" class="w-3.5 h-3.5 text-white"></i>
+                    Simulate Inbound
+                </button>
+            </div>
+
+            <!-- Agent Inboxes Navigation -->
+            <nav class="flex-1 overflow-y-auto px-3 py-3">
+                <div class="flex items-center justify-between px-3 mb-2">
+                    <p class="text-[10px] font-bold text-base-500 uppercase tracking-wider">Agent Inboxes</p>
+                    <button onclick="createNewInboxPrompt()" class="action-btn p-1 text-base-400 hover:text-white" title="New Virtual Inbox">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+                
+                <div id="inbox-nav-list" class="space-y-1">
+                    <div class="text-xs text-base-500 px-3 py-2">Loading inboxes...</div>
+                </div>
+
+                <!-- Navigation Views -->
+                <div class="mt-6 mb-2 px-3">
+                    <p class="text-[10px] font-bold text-base-500 uppercase tracking-wider">Views</p>
+                </div>
+                <div class="space-y-0.5">
+                    <div class="sidebar-item active flex items-center gap-3 px-3 py-2 text-base-200" onclick="setActiveView(this, 'all')">
+                        <i data-lucide="inbox" class="w-4 h-4 text-base-400"></i>
+                        <span class="text-xs font-medium flex-1">All Received</span>
+                        <span class="sidebar-count text-[11px] font-mono bg-base-800 text-base-300 px-2 py-0.5 rounded-md" id="sidebar-total-count">0</span>
+                    </div>
+                    <div class="sidebar-item flex items-center gap-3 px-3 py-2 text-base-400" onclick="setActiveView(this, 'otp')">
+                        <i data-lucide="key" class="w-4 h-4"></i>
+                        <span class="text-xs font-medium flex-1">With OTPs</span>
+                        <span class="sidebar-count text-[11px] font-mono bg-base-800 text-base-300 px-2 py-0.5 rounded-md" id="sidebar-otp-count">0</span>
+                    </div>
+                    <div class="sidebar-item flex items-center gap-3 px-3 py-2 text-base-400" onclick="setActiveView(this, 'links')">
+                        <i data-lucide="link-2" class="w-4 h-4"></i>
+                        <span class="text-xs font-medium flex-1">Action Links</span>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Agent Mailbox Status -->
+            <div class="px-4 py-3 border-t border-base-800 flex-shrink-0 bg-base-950">
+                <div class="flex items-center justify-between text-xs text-base-400 mb-1">
+                    <span class="font-mono">Active Engine</span>
+                    <button onclick="openSetupWizard()" class="text-[11px] text-white hover:underline flex items-center gap-1 font-semibold">
+                        <i data-lucide="sliders" class="w-3 h-3"></i> Setup
+                    </button>
+                </div>
+                <p class="text-[11px] text-base-500 truncate font-mono" id="status-current-addr">agentbox.io</p>
+            </div>
+        </aside>
+
+        <!-- Email List -->
+        <div class="w-96 flex-shrink-0 border-r border-base-800 flex flex-col bg-base-900">
+            <!-- Search & Filters -->
+            <div class="px-4 pt-4 pb-3 flex-shrink-0">
+                <div class="search-box flex items-center gap-3 bg-base-800 border border-base-700 rounded-xl px-3.5 py-2">
+                    <i data-lucide="search" class="w-4 h-4 text-base-500 flex-shrink-0"></i>
+                    <input type="text" id="search-input" placeholder="Search emails, OTPs, senders..." class="flex-1 bg-transparent text-xs text-base-100 placeholder-base-500 outline-none">
+                    <span class="kbd">/</span>
+                </div>
+            </div>
+
+            <!-- Filter tabs -->
+            <div class="px-4 pb-3 flex items-center justify-between flex-shrink-0 border-b border-base-800/80">
+                <div class="flex items-center gap-1">
+                    <button id="filter-all-btn" onclick="setFilter('all')" class="text-xs font-semibold text-white bg-base-750 border border-base-700 px-3 py-1.5 rounded-lg">All</button>
+                    <button id="filter-unread-btn" onclick="setFilter('unread')" class="text-xs font-medium text-base-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-base-800 transition-colors">Unread</button>
+                    <button id="filter-otp-btn" onclick="setFilter('otp')" class="text-xs font-medium text-base-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-base-800 transition-colors">OTP Codes</button>
+                </div>
+                <button onclick="refreshCurrentInbox()" class="action-btn p-1.5 text-base-400 hover:text-white" title="Refresh messages">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+
+            <!-- Email List Stream -->
+            <div class="flex-1 overflow-y-auto" id="email-list">
+                <div class="p-8 text-center text-base-500 text-xs">Loading messages...</div>
+            </div>
+        </div>
+
+        <!-- Email Detail View -->
+        <div class="flex-1 flex flex-col bg-base-950 overflow-hidden">
+            <!-- Toolbar -->
+            <div class="flex items-center justify-between px-6 h-14 border-b border-base-800 flex-shrink-0 bg-base-950">
+                <div class="flex items-center gap-2">
+                    <button onclick="openSetupWizard()" class="text-xs font-semibold text-base-100 bg-base-900 hover:bg-base-850 border border-base-700 hover:border-white px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all shadow-sm">
+                        <span id="top-status-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span id="top-status-label" class="font-mono text-[11px]">Provider Active</span>
+                        <i data-lucide="sliders" class="w-3.5 h-3.5 text-base-400"></i>
+                    </button>
+                    <div class="w-px h-4 bg-base-800 mx-1"></div>
+                    <button class="action-btn p-2 text-base-400 hover:text-white" onclick="copyCurrentAddress()" title="Copy Inbox Address">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
+                    <button class="action-btn p-2 text-base-400 hover:text-white" onclick="deleteCurrentMessage()" title="Delete Message">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-mono text-base-500" id="detail-counter"></span>
+                    <button class="action-btn p-2 text-base-400 hover:text-white" onclick="navigateEmail(-1)" title="Previous">
+                        <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                    </button>
+                    <button class="action-btn p-2 text-base-400 hover:text-white" onclick="navigateEmail(1)" title="Next">
+                        <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Email Content Scroll Area -->
+            <div class="flex-1 overflow-y-auto" id="email-detail-container">
+                <div class="p-12 text-center text-base-500">
+                    <i data-lucide="mail" class="w-10 h-10 mx-auto mb-3 text-base-700"></i>
+                    <p class="text-sm font-medium text-base-300">Select an email to view details</p>
+                    <p class="text-xs text-base-600 mt-1">Extracted OTPs and action URLs will be highlighted automatically.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State Management
+        let currentAccount = null;
+        let accounts = [];
+        let messages = [];
+        let activeFilter = 'all';
+        let currentEmailIndex = 0;
+        let eventSource = null;
+        let currentWizardStep = 1;
+        let selectedMailboxType = 'yes'; // 'yes' or 'no'
+
+        const presets = {
+            github: {
+                from: "no-reply@github.com",
+                subject: "[GitHub] Please verify your device - 849201",
+                body: "Hello!\n\nYour GitHub device verification code is:\n\n849201\n\nAlternatively, verify immediately by visiting:\nhttps://github.com/sessions/verified-device?token=gh_auth_89123891\n\nSecurity Team\nGitHub Inc."
+            },
+            aws: {
+                from: "no-reply-aws@amazon.com",
+                subject: "Amazon Web Services Email Verification (Code: 492018)",
+                body: "Hello,\n\nThank you for creating an Amazon Web Services account. Your email verification code is:\n\n492018\n\nEnter this code on the verification page to complete your signup.\n\nAlternatively, confirm via:\nhttps://signin.aws.amazon.com/verify?token=aws_sec_938192\n\nRegards,\nAmazon Web Services"
+            },
+            slack: {
+                from: "feedback@slack.com",
+                subject: "Sign in to Slack workspace",
+                body: "Click the link below to sign in to your Slack workspace instantly:\nhttps://slack.com/magic-login?token=slk_auth_9482910\n\nThis link will expire in 10 minutes."
+            },
+            stripe: {
+                from: "invoices@stripe.com",
+                subject: "Your invoice #1042 from Acme Corp ($49.00)",
+                body: "Hi there,\n\nHere is your receipt for payment of $49.00 USD.\n\nView invoice: https://invoice.stripe.com/inv_89123891\n\nThank you for your business!"
+            }
+        };
+
+        // App Initialization
+        document.addEventListener('DOMContentLoaded', async () => {
+            lucide.createIcons();
+            await loadAccounts();
+            await checkConfigStatus();
+            setupSSE();
+            setupSearch();
+        });
+
+        // 1. Config & Setup Wizard Handlers
+        async function checkConfigStatus() {
+            try {
+                const res = await fetch('/v1/config');
+                if (res.ok) {
+                    const cfg = await res.json();
+                    if (cfg.configured) {
+                        document.getElementById('top-status-dot').className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+                        document.getElementById('top-status-label').textContent = cfg.imap_host ? 'Hostinger Active' : 'SMTP Active';
+                    } else {
+                        document.getElementById('top-status-dot').className = 'w-2 h-2 rounded-full bg-amber-400';
+                        document.getElementById('top-status-label').textContent = 'Setup Required';
+                    }
+                    if (cfg.domain) document.getElementById('cfg-domain').value = cfg.domain;
+                    if (cfg.primary_email) document.getElementById('cfg-primary-email').value = cfg.primary_email;
+                    if (cfg.imap_host) document.getElementById('cfg-imap-host').value = cfg.imap_host;
+                    if (cfg.imap_port) document.getElementById('cfg-imap-port').value = cfg.imap_port;
+                    if (cfg.imap_user) document.getElementById('cfg-user').value = cfg.imap_user;
+                    if (cfg.smtp_host) document.getElementById('cfg-smtp-host').value = cfg.smtp_host;
+                    if (cfg.smtp_port) document.getElementById('cfg-smtp-port').value = cfg.smtp_port;
+                }
+            } catch (e) {
+                console.error('Config check failed', e);
+            }
+        }
+
+        function openSetupWizard() {
+            document.getElementById('setup-modal').classList.add('open');
+            goToStep(1);
+            lucide.createIcons();
+        }
+
+        function closeSetupWizard() {
+            document.getElementById('setup-modal').classList.remove('open');
+        }
+
+        function selectMailboxChoice(choice) {
+            selectedMailboxType = choice;
+            if (choice === 'yes') {
+                goToStep(2);
+            } else {
+                goToStep('2b');
+            }
+        }
+
+        function goToStep(step) {
+            currentWizardStep = step;
+            document.getElementById('step-1').classList.add('hidden');
+            document.getElementById('step-2a').classList.add('hidden');
+            document.getElementById('step-2b').classList.add('hidden');
+            document.getElementById('step-3').classList.add('hidden');
+
+            const prevBtn = document.getElementById('wizard-prev-btn');
+            const nextBtn = document.getElementById('wizard-next-btn');
+
+            if (step === 1) {
+                document.getElementById('step-1').classList.remove('hidden');
+                document.getElementById('wizard-step-indicator').textContent = 'Step 1 of 3 — Mailbox Type';
+                prevBtn.classList.add('hidden');
+                nextBtn.innerHTML = '<span>Continue</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>';
+            } else if (step === 2 || step === '2a') {
+                document.getElementById('step-2a').classList.remove('hidden');
+                document.getElementById('wizard-step-indicator').textContent = 'Step 2 of 3 — Provider Setup';
+                prevBtn.classList.remove('hidden');
+                nextBtn.innerHTML = '<span>Next: Agent & MCP</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>';
+            } else if (step === '2b') {
+                document.getElementById('step-2b').classList.remove('hidden');
+                document.getElementById('wizard-step-indicator').textContent = 'Step 2 of 3 — Stalwart Server Hub';
+                prevBtn.classList.remove('hidden');
+                nextBtn.innerHTML = '<span>Next: Agent & MCP</span> <i data-lucide="arrow-right" class="w-4 h-4"></i>';
+            } else if (step === 3) {
+                document.getElementById('step-3').classList.remove('hidden');
+                document.getElementById('wizard-step-indicator').textContent = 'Step 3 of 3 — Agent Identity & MCP';
+                prevBtn.classList.remove('hidden');
+                nextBtn.innerHTML = '<span>🎉 Save & Launch Engine</span> <i data-lucide="check" class="w-4 h-4"></i>';
+            }
+            lucide.createIcons();
+        }
+
+        function wizardNext() {
+            if (currentWizardStep === 1) {
+                selectMailboxChoice(selectedMailboxType);
+            } else if (currentWizardStep === 2 || currentWizardStep === '2a' || currentWizardStep === '2b') {
+                goToStep(3);
+            } else if (currentWizardStep === 3) {
+                saveConfiguration();
+            }
+        }
+
+        function wizardBack() {
+            if (currentWizardStep === 3) {
+                goToStep(selectedMailboxType === 'yes' ? 2 : '2b');
+            } else {
+                goToStep(1);
+            }
+        }
+
+        function applyProviderPreset(preset) {
+            const domain = document.getElementById('cfg-domain').value || 'apocalypto.in';
+            if (preset === 'hostinger') {
+                document.getElementById('cfg-imap-host').value = 'imap.hostinger.com';
+                document.getElementById('cfg-imap-port').value = 993;
+                document.getElementById('cfg-smtp-host').value = 'smtp.hostinger.com';
+                document.getElementById('cfg-smtp-port').value = 587;
+                showToast('Applied Hostinger Mail settings');
+            } else if (preset === 'titan') {
+                document.getElementById('cfg-imap-host').value = 'imap.titan.email';
+                document.getElementById('cfg-imap-port').value = 993;
+                document.getElementById('cfg-smtp-host').value = 'smtp.titan.email';
+                document.getElementById('cfg-smtp-port').value = 587;
+                showToast('Applied Titan Business Mail settings');
+            } else if (preset === 'google') {
+                document.getElementById('cfg-imap-host').value = 'imap.gmail.com';
+                document.getElementById('cfg-imap-port').value = 993;
+                document.getElementById('cfg-smtp-host').value = 'smtp.gmail.com';
+                document.getElementById('cfg-smtp-port').value = 587;
+                showToast('Applied Google Workspace settings');
+            } else {
+                document.getElementById('cfg-imap-host').value = '';
+                document.getElementById('cfg-smtp-host').value = '';
+            }
+        }
+
+        function useLocalhostStalwart() {
+            document.getElementById('cfg-imap-host').value = 'localhost';
+            document.getElementById('cfg-imap-port').value = 993;
+            document.getElementById('cfg-smtp-host').value = 'localhost';
+            document.getElementById('cfg-smtp-port').value = 587;
+            document.getElementById('cfg-user').value = 'admin';
+            document.getElementById('cfg-domain').value = 'local.agent';
+            document.getElementById('cfg-primary-email').value = 'agent@local.agent';
+            showToast('Auto-filled localhost Stalwart settings');
+            goToStep(3);
+        }
+
+        async function testLiveConnection() {
+            const btn = document.getElementById('test-conn-btn');
+            const resultBox = document.getElementById('test-conn-result');
+            const host = document.getElementById('cfg-imap-host').value;
+            const port = parseInt(document.getElementById('cfg-imap-port').value) || 993;
+            const username = document.getElementById('cfg-user').value;
+            const password = document.getElementById('cfg-pass').value;
+
+            if (!host || !username || !password) {
+                showToast('Please enter Host, Login Email, and Password');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> <span>Testing TLS Connection...</span>';
+            lucide.createIcons();
+
+            resultBox.className = 'mt-2 text-xs font-mono p-3 rounded-lg border bg-base-950 border-base-700 text-base-300';
+            resultBox.textContent = 'Connecting to ' + host + ':' + port + '...';
+            resultBox.classList.remove('hidden');
+
+            try {
+                const res = await fetch('/v1/config/test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ protocol: 'imap', host, port, username, password })
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    resultBox.className = 'mt-2 text-xs font-mono p-3 rounded-lg border bg-emerald-950/40 border-emerald-500/40 text-emerald-300';
+                    resultBox.innerHTML = `🟢 <strong>SUCCESS:</strong> ${data.message}`;
+                    showToast('Connection verified successfully!');
+                } else {
+                    resultBox.className = 'mt-2 text-xs font-mono p-3 rounded-lg border bg-red-950/40 border-red-500/40 text-red-300';
+                    resultBox.innerHTML = `🔴 <strong>ERROR:</strong> ${data.error}`;
+                }
+            } catch (e) {
+                resultBox.className = 'mt-2 text-xs font-mono p-3 rounded-lg border bg-red-950/40 border-red-500/40 text-red-300';
+                resultBox.innerHTML = `🔴 <strong>FAILED:</strong> ${e.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="activity" class="w-4 h-4 text-white"></i> <span>⚡ Test Connection Live</span>';
+                lucide.createIcons();
+            }
+        }
+
+        async function startDockerContainer() {
+            showToast('Launching Stalwart in Docker...');
+            try {
+                const res = await fetch('/v1/docker/stalwart', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'started' || data.status === 'created') {
+                    showToast('Stalwart container launched!');
+                } else {
+                    showToast('Docker response: ' + (data.error || 'Check Docker'));
+                }
+            } catch (e) {
+                showToast('Error starting Docker: ' + e.message);
+            }
+        }
+
+        function copyDockerCommand() {
+            const cmd = document.getElementById('docker-cmd-text').innerText.trim();
+            navigator.clipboard.writeText(cmd);
+            showToast('Copied Docker run command!');
+        }
+
+        async function autoInstallMcpNow() {
+            const btn = document.getElementById('mcp-install-btn');
+            const resultBox = document.getElementById('mcp-install-result');
+            btn.disabled = true;
+            btn.textContent = 'Installing...';
+
+            try {
+                const res = await fetch('/v1/mcp/install', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    resultBox.classList.remove('hidden');
+                    resultBox.textContent = `[✓] Configured in: ${data.installed_in.join(', ')}`;
+                    showToast('MCP Server & Skill registered in IDEs!');
+                }
+            } catch (e) {
+                showToast('Auto-install error: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="cpu" class="w-3.5 h-3.5"></i> 1-Click Install';
+                lucide.createIcons();
+            }
+        }
+
+        async function saveConfiguration() {
+            const domain = document.getElementById('cfg-domain').value || 'apocalypto.in';
+            const primary_email = document.getElementById('cfg-primary-email').value || `agent@${domain}`;
+            const imap_host = document.getElementById('cfg-imap-host').value;
+            const imap_port = parseInt(document.getElementById('cfg-imap-port').value) || 993;
+            const imap_user = document.getElementById('cfg-user').value;
+            const imap_pass = document.getElementById('cfg-pass').value;
+            const smtp_host = document.getElementById('cfg-smtp-host').value;
+            const smtp_port = parseInt(document.getElementById('cfg-smtp-port').value) || 587;
+            const smtp_user = document.getElementById('cfg-user').value;
+            const smtp_pass = document.getElementById('cfg-pass').value;
+
+            try {
+                const res = await fetch('/v1/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        domain,
+                        primary_email,
+                        agent_name: 'agent',
+                        imap_host,
+                        imap_port,
+                        imap_user,
+                        imap_pass,
+                        smtp_host,
+                        smtp_port,
+                        smtp_user,
+                        smtp_pass
+                    })
+                });
+
+                if (res.ok) {
+                    closeSetupWizard();
+                    showToast('🎉 Configuration saved & Engine activated!');
+                    await checkConfigStatus();
+                    await loadAccounts();
+                } else {
+                    showToast('Failed to save configuration');
+                }
+            } catch (e) {
+                showToast('Error saving: ' + e.message);
+            }
+        }
+
+        // 2. Data Fetching
+        async function loadAccounts() {
+            try {
+                const res = await fetch('/v1/accounts');
+                accounts = await res.json();
+                renderInboxNav();
+
+                if (accounts.length > 0) {
+                    if (!currentAccount || !accounts.some(a => a.id === currentAccount.id)) {
+                        selectAccount(accounts[0]);
+                    }
+                }
+            } catch (err) {
+                console.error('Error loading accounts:', err);
+                document.getElementById('inbox-nav-list').innerHTML = '<div class="text-xs text-red-400 px-3 py-2">Error loading inboxes</div>';
+            }
+        }
+
+        async function loadMessages(accountId) {
+            try {
+                const res = await fetch(`/v1/accounts/${accountId}/messages`);
+                messages = await res.json();
+                applyFilterAndRender();
+                updateCounts();
+            } catch (err) {
+                console.error('Error loading messages:', err);
+            }
+        }
+
+        // 3. Render Helpers
+        function renderInboxNav() {
+            const list = document.getElementById('inbox-nav-list');
+            if (accounts.length === 0) {
+                list.innerHTML = '<div class="text-xs text-base-500 px-3 py-2">No inboxes created yet</div>';
+                return;
+            }
+
+            list.innerHTML = accounts.map(acc => {
+                const isActive = currentAccount && currentAccount.id === acc.id;
+                return `
+                    <div class="sidebar-item ${isActive ? 'active' : ''} group flex items-center justify-between px-3 py-2 text-xs text-base-300" onclick="selectAccountById('${acc.id}')">
+                        <div class="flex items-center gap-2.5 truncate flex-1 min-w-0">
+                            <span class="w-2 h-2 rounded-full ${isActive ? 'bg-white' : 'bg-base-700'} flex-shrink-0"></span>
+                            <span class="truncate font-medium">${escapeHtml(acc.display_name || acc.address.split('@')[0])}</span>
+                        </div>
+                        <button onclick="event.stopPropagation(); deleteInboxById('${acc.id}', '${escapeHtml(acc.address)}')" class="opacity-0 group-hover:opacity-100 p-1 text-base-500 hover:text-red-400 rounded transition-all" title="Delete mailbox">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        async function deleteInboxById(id, address) {
+            if (!confirm(`Are you sure you want to delete mailbox "${address}"?`)) return;
+            try {
+                const res = await fetch(`/v1/accounts/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast(`Deleted ${address}`);
+                    if (currentAccount && currentAccount.id === id) {
+                        currentAccount = null;
+                    }
+                    await loadAccounts();
+                } else {
+                    showToast('Failed to delete mailbox');
+                }
+            } catch (e) {
+                showToast('Error: ' + e.message);
+            }
+        }
+
+        function selectAccount(acc) {
+            currentAccount = acc;
+            document.getElementById('status-current-addr').textContent = acc.address;
+            document.getElementById('compose-from-address').textContent = acc.address;
+            renderInboxNav();
+            loadMessages(acc.id);
+        }
+
+        function selectAccountById(id) {
+            const acc = accounts.find(a => a.id === id);
+            if (acc) selectAccount(acc);
+        }
+
+        function setFilter(filter) {
+            activeFilter = filter;
+            ['all', 'unread', 'otp'].forEach(f => {
+                const btn = document.getElementById(`filter-${f}-btn`);
+                if (btn) {
+                    if (f === filter) {
+                        btn.className = 'text-xs font-semibold text-white bg-base-750 border border-base-700 px-3 py-1.5 rounded-lg';
+                    } else {
+                        btn.className = 'text-xs font-medium text-base-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-base-800 transition-colors';
+                    }
+                }
+            });
+            applyFilterAndRender();
+        }
+
+        function applyFilterAndRender() {
+            let filtered = messages;
+            if (activeFilter === 'otp') {
+                filtered = messages.filter(m => m.extracted_otp && m.extracted_otp.length > 0);
+            } else if (activeFilter === 'unread') {
+                filtered = messages.slice(0, Math.ceil(messages.length / 2));
+            }
+            renderEmailList(filtered);
+            if (filtered.length > 0) {
+                showEmailDetail(0, filtered);
+            } else {
+                renderEmptyDetail();
+            }
+        }
+
+        function renderEmailList(list) {
+            const container = document.getElementById('email-list');
+            if (!list || list.length === 0) {
+                container.innerHTML = `
+                    <div class="p-8 text-center text-base-500">
+                        <i data-lucide="inbox" class="w-8 h-8 mx-auto mb-2 text-base-700"></i>
+                        <p class="text-xs font-medium text-base-400">Inbox is clean</p>
+                        <p class="text-[11px] text-base-600 mt-1">No messages match this filter</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            container.innerHTML = list.map((msg, index) => {
+                const isActive = index === currentEmailIndex;
+                const hasOtp = !!msg.extracted_otp;
+                const initials = getInitials(msg.from_address);
+                const relTime = formatRelativeTime(msg.created_at);
+
+                return `
+                    <div class="email-row ${isActive ? 'active' : ''} px-4 py-3.5 border-b border-base-800/60" onclick="showEmailDetail(${index})">
+                        <div class="flex items-start gap-3">
+                            <div class="avatar text-xs">${initials}</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-2 mb-1">
+                                    <span class="text-xs font-bold text-base-100 truncate">${escapeHtml(msg.from_address.split('@')[0])}</span>
+                                    <span class="text-[10px] font-mono text-base-500 flex-shrink-0">${relTime}</span>
+                                </div>
+                                <p class="text-xs font-medium text-base-200 truncate mb-1">${escapeHtml(msg.subject || '(No Subject)')}</p>
+                                <p class="text-[11px] text-base-500 line-clamp-1">${escapeHtml(msg.body_text || '')}</p>
+                                ${hasOtp ? `
+                                    <div class="mt-2 inline-flex items-center gap-1.5 bg-base-950 border border-base-700 px-2 py-0.5 rounded-md text-[10px] font-mono font-bold text-white">
+                                        <i data-lucide="key" class="w-3 h-3 text-white"></i>
+                                        <span>OTP: ${msg.extracted_otp}</span>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function showEmailDetail(index, customList) {
+            const list = customList || messages;
+            if (!list || list.length === 0 || index >= list.length) return;
+            currentEmailIndex = index;
+            const msg = list[index];
+
+            document.getElementById('detail-counter').textContent = `${index + 1} of ${list.length}`;
+            const container = document.getElementById('email-detail-container');
+            const initials = getInitials(msg.from_address);
+            const dateStr = new Date(msg.created_at * 1000).toLocaleString();
+
+            let linksHtml = '';
+            if (msg.extracted_links) {
+                try {
+                    const links = JSON.parse(msg.extracted_links);
+                    if (links.length > 0) {
+                        linksHtml = `
+                            <div class="bg-base-900 border border-base-800 rounded-xl p-4 space-y-2">
+                                <span class="text-[10px] font-bold text-base-400 uppercase tracking-wider block">Detected Action Links</span>
+                                <div class="space-y-1.5">
+                                    ${links.map(link => `
+                                        <a href="${escapeHtml(link)}" target="_blank" class="text-xs text-white hover:underline flex items-center gap-2 truncate font-mono bg-base-950 p-2 rounded-lg border border-base-800">
+                                            <i data-lucide="external-link" class="w-3.5 h-3.5 flex-shrink-0 text-base-400"></i>
+                                            <span class="truncate">${escapeHtml(link)}</span>
+                                        </a>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                } catch(e) {}
+            }
+
+            container.innerHTML = `
+                <div class="p-8 space-y-6 max-w-4xl mx-auto fade-in">
+                    ${msg.extracted_otp ? `
+                        <div class="otp-banner">
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center flex-shrink-0">
+                                    <i data-lucide="key" class="w-5 h-5"></i>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-base-400 block">Extracted Verification Code</span>
+                                    <span class="otp-code-text">${escapeHtml(msg.extracted_otp)}</span>
+                                </div>
+                            </div>
+                            <button onclick="copyOtp('${msg.extracted_otp}')" class="compose-btn text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5">
+                                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                                Copy Code
+                            </button>
+                        </div>
+                    ` : ''}
+
+                    <div class="space-y-4">
+                        <h2 class="text-xl font-bold text-white tracking-tight">${escapeHtml(msg.subject || '(No Subject)')}</h2>
+                        <div class="flex items-center justify-between border-b border-base-800 pb-4">
+                            <div class="flex items-center gap-3">
+                                <div class="avatar">${initials}</div>
+                                <div>
+                                    <p class="text-xs font-bold text-white">${escapeHtml(msg.from_address)}</p>
+                                    <p class="text-[11px] font-mono text-base-400">To: ${escapeHtml(msg.to_address)}</p>
+                                </div>
+                            </div>
+                            <span class="text-xs font-mono text-base-500">${dateStr}</span>
+                        </div>
+                    </div>
+
+                    ${linksHtml}
+
+                    <div class="text-sm text-base-200 leading-relaxed font-sans whitespace-pre-wrap bg-base-900/60 p-6 rounded-2xl border border-base-850">
+                        ${escapeHtml(msg.body_text || 'No text content.')}
+                    </div>
+
+                    <!-- Quick Reply -->
+                    <div class="pt-4 border-t border-base-800 space-y-3">
+                        <span class="text-xs font-semibold text-base-400 block">Quick Reply as Agent</span>
+                        <div class="bg-base-900 border border-base-800 rounded-xl p-3 focus-within:border-white transition-colors">
+                            <textarea id="reply-text" rows="3" placeholder="Write reply to ${escapeHtml(msg.from_address)}..." class="w-full bg-transparent text-xs text-white placeholder-base-600 outline-none resize-none"></textarea>
+                            <div class="flex items-center justify-end pt-2 border-t border-base-800/80">
+                                <button onclick="sendQuickReply()" class="compose-btn text-xs font-bold px-4 py-1.5 rounded-lg flex items-center gap-1.5">
+                                    <i data-lucide="send" class="w-3 h-3"></i> Reply
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function renderEmptyDetail() {
+            document.getElementById('email-detail-container').innerHTML = `
+                <div class="p-12 text-center text-base-500">
+                    <i data-lucide="mail" class="w-10 h-10 mx-auto mb-3 text-base-700"></i>
+                    <p class="text-sm font-medium text-base-300">Select an email to view details</p>
+                    <p class="text-xs text-base-600 mt-1">Extracted OTPs and action URLs will be highlighted automatically.</p>
+                </div>
+            `;
+            document.getElementById('detail-counter').textContent = '';
+            lucide.createIcons();
+        }
+
+        function updateCounts() {
+            document.getElementById('sidebar-total-count').textContent = messages.length;
+            const otpCount = messages.filter(m => m.extracted_otp && m.extracted_otp.length > 0).length;
+            document.getElementById('sidebar-otp-count').textContent = otpCount;
+        }
+
+        // Modals & Navigation
+        function openCompose() {
+            if (currentAccount) {
+                document.getElementById('compose-from-address').textContent = currentAccount.address;
+            }
+            document.getElementById('compose-modal').classList.add('open');
+        }
+
+        function closeCompose() {
+            document.getElementById('compose-modal').classList.remove('open');
+        }
+
+        function openSimulate() {
+            document.getElementById('simulate-modal').classList.add('open');
+        }
+
+        function closeSimulate() {
+            document.getElementById('simulate-modal').classList.remove('open');
+        }
+
+        function loadSimPreset(key) {
+            const p = presets[key];
+            if (!p) return;
+            document.getElementById('sim-from').value = p.from;
+            document.getElementById('sim-subject').value = p.subject;
+            document.getElementById('sim-body').value = p.body;
+        }
+
+        function copyOtp(code) {
+            navigator.clipboard.writeText(code);
+            showToast(`🔑 OTP code ${code} copied to clipboard!`);
+        }
+
+        function copyCurrentAddress() {
+            if (!currentAccount) return;
+            navigator.clipboard.writeText(currentAccount.address);
+            showToast(`Copied ${currentAccount.address}`);
+        }
+
+        function navigateEmail(direction) {
+            if (messages.length === 0) return;
+            const nextIndex = currentEmailIndex + direction;
+            if (nextIndex >= 0 && nextIndex < messages.length) {
+                showEmailDetail(nextIndex);
+                renderEmailList(messages);
+            }
+        }
+
+        async function createNewInboxPrompt() {
+            const name = prompt('Enter a name for the new agent inbox (e.g. github-bot):', 'agent-worker');
+            if (!name) return;
+            try {
+                const res = await fetch('/v1/accounts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ display_name: name })
+                });
+                if (res.ok) {
+                    const newAcc = await res.json();
+                    showToast(`Created ${newAcc.address}`);
+                    await loadAccounts();
+                    selectAccount(newAcc);
+                }
+            } catch (e) {
+                showToast('Error creating inbox: ' + e.message);
+            }
+        }
+
+        async function deleteCurrentInbox() {
+            if (!currentAccount) return;
+            if (!confirm(`Delete mailbox ${currentAccount.address}?`)) return;
+            try {
+                await fetch(`/v1/accounts/${currentAccount.id}`, { method: 'DELETE' });
+                showToast('Inbox deleted');
+                currentAccount = null;
+                await loadAccounts();
+            } catch (e) {
+                showToast('Error: ' + e.message);
+            }
+        }
+
+        async function deleteCurrentMessage() {
+            if (!currentAccount || messages.length === 0) return;
+            const msg = messages[currentEmailIndex];
+            if (!msg) return;
+            try {
+                await fetch(`/v1/accounts/${currentAccount.id}/messages/${msg.id}`, { method: 'DELETE' });
+                showToast('Message deleted');
+                await loadMessages(currentAccount.id);
+            } catch (e) {
+                showToast('Error: ' + e.message);
+            }
+        }
+
+        async function refreshCurrentInbox() {
+            if (currentAccount) {
+                showToast('Refreshing inbox...');
+                await loadMessages(currentAccount.id);
+            }
+        }
+
+        async function submitSimulate() {
+            if (!currentAccount) return;
+            const from = document.getElementById('sim-from').value;
+            const subject = document.getElementById('sim-subject').value;
+            const body = document.getElementById('sim-body').value;
+
+            try {
+                const res = await fetch('/v1/inbound', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: currentAccount.address,
+                        from: from,
+                        subject: subject,
+                        body: body
+                    })
+                });
+                if (!res.ok) throw new Error('Simulation failed');
+                closeSimulate();
+                showToast('⚡ Inbound email received & parsed!');
+                await loadMessages(currentAccount.id);
+            } catch (err) {
+                showToast('Error: ' + err.message);
+            }
+        }
+
+        async function submitCompose() {
+            if (!currentAccount) return;
+            const to = document.getElementById('compose-to').value;
+            const subject = document.getElementById('compose-subject').value;
+            const body = document.getElementById('compose-body').value;
+
+            if (!to || !body) {
+                showToast('Please fill in recipient and body');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/v1/accounts/${currentAccount.id}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to: [to], subject: subject, text: body })
+                });
+                if (!res.ok) throw new Error('Failed to send');
+                closeCompose();
+                document.getElementById('compose-to').value = '';
+                document.getElementById('compose-subject').value = '';
+                document.getElementById('compose-body').value = '';
+                showToast('✉️ Outbound email dispatched!');
+                await loadMessages(currentAccount.id);
+            } catch (err) {
+                showToast('Error: ' + err.message);
+            }
+        }
+
+        async function sendQuickReply() {
+            if (!currentAccount || messages.length === 0) return;
+            const currentMsg = messages[currentEmailIndex];
+            const text = document.getElementById('reply-text').value;
+            if (!text) {
+                showToast('Please enter reply text');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/v1/accounts/${currentAccount.id}/messages`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        to: [currentMsg.from_address],
+                        subject: "Re: " + (currentMsg.subject || ''),
+                        text: text
+                    })
+                });
+                if (!res.ok) throw new Error('Reply failed');
+                document.getElementById('reply-text').value = '';
+                showToast('Reply dispatched!');
+                await loadMessages(currentAccount.id);
+            } catch (err) {
+                showToast('Error: ' + err.message);
+            }
+        }
+
+        // Realtime SSE
+        function setupSSE() {
+            if (eventSource) eventSource.close();
+            eventSource = new EventSource('/v1/events');
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'new_message') {
+                        showToast(`⚡ New email from ${data.message.from_address}`);
+                        if (currentAccount) {
+                            loadMessages(currentAccount.id);
+                        }
+                    } else if (data.type === 'config_updated') {
+                        checkConfigStatus();
+                        loadAccounts();
+                    }
+                } catch (e) {
+                    console.error('SSE Error', e);
+                }
+            };
+        }
+
+        function setupSearch() {
+            document.getElementById('search-input').addEventListener('input', (e) => {
+                const q = e.target.value.toLowerCase();
+                const filtered = messages.filter(m =>
+                    m.from_address.toLowerCase().includes(q) ||
+                    (m.subject && m.subject.toLowerCase().includes(q)) ||
+                    (m.extracted_otp && m.extracted_otp.includes(q)) ||
+                    (m.body_text && m.body_text.toLowerCase().includes(q))
+                );
+                renderEmailList(filtered);
+            });
+        }
+
+        let toastTimeout;
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toast-message');
+            toastMessage.textContent = message;
+            toast.classList.add('show');
+            clearTimeout(toastTimeout);
+            toastTimeout = setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        function getInitials(emailStr) {
+            if (!emailStr) return 'AG';
+            const clean = emailStr.replace(/<.*>/, '').trim();
+            const parts = clean.split(/[\s.@_-]+/);
+            if (parts.length >= 2) {
+                return (parts[0][0] + parts[1][0]).toUpperCase();
+            }
+            return clean.substring(0, 2).toUpperCase();
+        }
+
+        function formatRelativeTime(timestamp) {
+            const now = Math.floor(Date.now() / 1000);
+            const diff = now - timestamp;
+            if (diff < 60) return 'Just now';
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+            return new Date(timestamp * 1000).toLocaleDateString();
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.innerText = str;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{
+  "name": "agentbox",
+  "version": "2.0.0",
+  "description": "Autonomous AI Mailbox & Instant 2ms OTP Engine for AI Agents (Claude Code, Cursor, Antigravity)",
+  "main": "electron/main.js",
+  "bin": {
+    "agentbox": "./bin/agentbox.js"
+  },
+  "scripts": {
+    "start": "node ./bin/agentbox.js ui",
+    "app": "electron electron/main.js",
+    "desktop": "electron electron/main.js",
+    "mcp": "node ./bin/agentbox.js mcp",
+    "init": "node ./bin/agentbox.js init"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "mailbox",
+    "otp",
+    "mcp",
+    "model-context-protocol",
+    "claude-code",
+    "cursor",
+    "antigravity",
+    "hostinger",
+    "email-automation",
+    "electron"
+  ],
+  "author": "AgentBox Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}

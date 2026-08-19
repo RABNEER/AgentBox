@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agentbox": {
+      "command": "D:\\AgentBox\\target\\debug\\agentbox-mail.exe",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}

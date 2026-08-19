@@ -1,0 +1,45 @@
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+Cargo.lock
+
+# SQLite Database
+agentbox.db
+agentbox.db-journal
+agentbox.db-shm
+agentbox.db-wal
+*.sqlite
+*.db
+
+# Node & Electron dependencies & build outputs
+node_modules/
+dist/
+release/
+out/
+.npm/
+
+# Logs & Temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+
+# IDE & Editor configs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Brain & Agent scratch files
+.system_generated/
+scratch/
