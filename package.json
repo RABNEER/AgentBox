@@ -22,7 +22,41 @@
     "app": "electron electron/main.js",
     "desktop": "electron electron/main.js",
     "mcp": "node ./bin/agentbox.js mcp",
-    "init": "node ./bin/agentbox.js init"
+    "init": "node ./bin/agentbox.js init",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.agentbox.mail",
+    "productName": "AgentBox Mail",
+    "copyright": "Copyright © 2026 AgentBox",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "ui/**/*",
+      "skills/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "target/release/agentbox-mail.exe",
+        "to": "bin/agentbox-mail.exe"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "AgentBox Mail"
+    }
   },
   "keywords": [
     "ai",
@@ -49,6 +83,7 @@
   },
   "homepage": "https://github.com/RABNEER/AgentBox#readme",
   "devDependencies": {
-    "electron": "^31.7.7"
+    "electron": "^31.7.7",
+    "electron-builder": "^26.15.3"
   }
 }

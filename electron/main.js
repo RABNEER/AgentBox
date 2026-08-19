@@ -8,6 +8,10 @@ let tray = null;
 let rustProcess = null;
 let isQuitting = false;
 
+const fs = require('fs');
+
+let activePort = 3000;
+
 // 1. Child Process Management (Spawn background Rust engine if not active)
 function isServerRunning(port = 3000) {
     return new Promise((resolve) => {
@@ -23,21 +27,35 @@ function isServerRunning(port = 3000) {
 }
 
 async function ensureBackendEngine() {
-    const running = await isServerRunning(3000);
-    if (running) {
-        console.log('[Electron] AgentBox Rust daemon is already running.');
-        setupSSEListener();
-        return;
+    // Check if server is already running on 3000..3015
+    for (let p = 3000; p <= 3015; p++) {
+        if (await isServerRunning(p)) {
+            activePort = p;
+            console.log(`[Electron] AgentBox Rust daemon is already running on port ${activePort}.`);
+            setupSSEListener(activePort);
+            return activePort;
+        }
     }
 
     console.log('[Electron] Spawning AgentBox Rust engine background daemon...');
-    const binPath = app.isPackaged
-        ? path.join(process.resourcesPath, 'bin', 'agentbox-mail.exe')
-        : path.join(__dirname, '..', 'target', 'debug', 'agentbox-mail.exe');
+    const possiblePaths = [
+        path.join(process.resourcesPath, 'bin', 'agentbox-mail.exe'),
+        path.join(process.resourcesPath, 'agentbox-mail.exe'),
+        path.join(__dirname, '..', 'bin', 'agentbox-mail.exe'),
+        path.join(__dirname, '..', 'target', 'release', 'agentbox-mail.exe'),
+        path.join(__dirname, '..', 'target', 'debug', 'agentbox-mail.exe')
+    ];
+
+    let binPath = possiblePaths.find(p => fs.existsSync(p));
+    if (!binPath && app.isPackaged) {
+        binPath = path.join(process.resourcesPath, 'bin', 'agentbox-mail.exe');
+    } else if (!binPath) {
+        binPath = path.join(__dirname, '..', 'target', 'release', 'agentbox-mail.exe');
+    }
 
     try {
         rustProcess = spawn(binPath, ['server', '--port', '3000'], {
-            cwd: app.isPackaged ? process.resourcesPath : path.join(__dirname, '..'),
+            cwd: app.isPackaged ? app.getPath('userData') : path.join(__dirname, '..'),
             stdio: 'ignore',
             detached: false,
             windowsHide: true,
@@ -47,19 +65,24 @@ async function ensureBackendEngine() {
             console.error('[Electron] Failed to spawn Rust binary:', err);
         });
 
-        // Wait for server to boot
-        for (let i = 0; i < 15; i++) {
-            await new Promise((r) => setTimeout(r, 400));
-            if (await isServerRunning(3000)) {
-                console.log('[Electron] Connected to freshly spawned AgentBox engine.');
-                break;
+        // Wait for server to boot on 3000..3015
+        for (let i = 0; i < 25; i++) {
+            await new Promise((r) => setTimeout(r, 300));
+            for (let p = 3000; p <= 3015; p++) {
+                if (await isServerRunning(p)) {
+                    activePort = p;
+                    console.log(`[Electron] Connected to freshly spawned AgentBox engine on port ${activePort}.`);
+                    setupSSEListener(activePort);
+                    return activePort;
+                }
             }
         }
     } catch (err) {
         console.error('[Electron] Error starting background engine:', err);
     }
 
-    setupSSEListener();
+    setupSSEListener(activePort);
+    return activePort;
 }
 
 // 2. Native Desktop OS Notifications via SSE
@@ -143,7 +166,7 @@ function createWindow() {
         },
     });
 
-    mainWindow.loadURL('http://localhost:3000');
+    mainWindow.loadURL(`http://localhost:${activePort}`);
 
     // Minimize to tray on close
     mainWindow.on('close', (event) => {
