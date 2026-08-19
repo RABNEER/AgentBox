@@ -100,7 +100,10 @@ function runInit() {
   console.log('   ⚡ AgentBox — 1-Click MCP & AI Skill Auto-Installer');
   console.log('====================================================================\n');
 
-  const bin = getBinaryPath() || path.join(ROOT_DIR, 'target', 'debug', BINARY_NAME);
+  const bin = getBinaryPath();
+  const mcpCommand = bin ? bin : (isWindows ? 'npx.cmd' : 'npx');
+  const mcpArgs = bin ? ['mcp'] : ['-y', 'agentbox-mail', 'mcp'];
+
   const homeDir = os.homedir();
   let installedCount = 0;
 
@@ -110,8 +113,8 @@ function runInit() {
     let cfg = fs.existsSync(claudeConfigPath) ? JSON.parse(fs.readFileSync(claudeConfigPath, 'utf8')) : {};
     cfg.mcpServers = cfg.mcpServers || {};
     cfg.mcpServers.agentbox = {
-      command: bin,
-      args: ['mcp']
+      command: mcpCommand,
+      args: mcpArgs
     };
     fs.writeFileSync(claudeConfigPath, JSON.stringify(cfg, null, 2));
     console.log('  [✓] Configured MCP in Claude Code (~/.claude.json)');
@@ -128,8 +131,8 @@ function runInit() {
     let cfg = fs.existsSync(cursorFile) ? JSON.parse(fs.readFileSync(cursorFile, 'utf8')) : {};
     cfg.mcpServers = cfg.mcpServers || {};
     cfg.mcpServers.agentbox = {
-      command: bin,
-      args: ['mcp']
+      command: mcpCommand,
+      args: mcpArgs
     };
     fs.writeFileSync(cursorFile, JSON.stringify(cfg, null, 2));
     console.log('  [✓] Configured MCP in Cursor (.cursor/mcp.json)');
@@ -145,8 +148,8 @@ function runInit() {
       let cfg = fs.existsSync(antigravityConfigPath) ? JSON.parse(fs.readFileSync(antigravityConfigPath, 'utf8')) : {};
       cfg.mcpServers = cfg.mcpServers || {};
       cfg.mcpServers.agentbox = {
-        command: bin,
-        args: ['mcp']
+        command: mcpCommand,
+        args: mcpArgs
       };
       fs.writeFileSync(antigravityConfigPath, JSON.stringify(cfg, null, 2));
       console.log('  [✓] Configured MCP in Antigravity IDE (mcp_config.json)');
